@@ -12,15 +12,13 @@ export type Entry = {
   color?: string
 }
 
-// TODO: swap these placeholders for your actual favourites.
 export const books: Entry[] = [
-  { title: 'Piranesi', by: 'Susanna Clarke' },
-  { title: 'Dune', by: 'Frank Herbert' },
-  { title: 'Solaris', by: 'Stanisław Lem' },
-  { title: 'The Dispossessed', by: 'Ursula K. Le Guin' },
-  { title: 'Pachinko', by: 'Min Jin Lee' },
-  { title: 'Stoner', by: 'John Williams' },
-  { title: 'Kitchen', by: 'Banana Yoshimoto' },
+  { title: 'L\'Étranger', by: 'Albert Camus' },
+  { title: 'Le Petit Prince', by: 'Antoine de Saint-Exupéry' },
+  { title: "Brave New World", by: "Aldous Huxley" },
+  { title: 'The Phantom Tollbooth', by: 'Norton Juster' },
+  { title: 'Voyage au Bout de la Nuit', by: 'Louis-Ferdinand Céline' },
+  { title: 'The Trial', by: 'Franz Kafka' },
 ]
 
 export const records: Entry[] = [

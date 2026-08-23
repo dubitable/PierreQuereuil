@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
+import { isGrabbing } from './grabbing'
 import {
   fitDistance,
   focusPose,
@@ -92,6 +93,8 @@ export function CameraRig({ touch }: { touch: boolean }) {
       if (!point) return
       const dx = point.clientX - startX
       const dy = point.clientY - startY
+      // A drag on the chair is not a swipe between stations.
+      if (isGrabbing()) return
       if (Math.abs(dx) < SWIPE_MIN || Math.abs(dx) <= Math.abs(dy)) return
       step(dx < 0 ? 1 : -1)
     }

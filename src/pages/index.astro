@@ -4,11 +4,16 @@ import Scene from '../components/Scene.tsx'
 import { site } from '../data/site'
 import { books, films, records } from '../data/collections'
 import { resolveFilms } from '../data/tmdb'
+import { resolveBooks } from '../data/openLibrary'
 
 // Resolved here rather than in the browser so the TMDB key stays server-side
-// and the room costs no film requests at runtime. Never throws: with no key it
-// returns nulls and the cabinet falls back to plain cases.
-const resolvedFilms = await resolveFilms(films)
+// and the room costs no metadata requests at runtime. Neither throws: with no
+// key or no network they return nulls and the shelves fall back to plain
+// coloured covers.
+const [resolvedFilms, resolvedBooks] = await Promise.all([
+	resolveFilms(films),
+	resolveBooks(books),
+])
 
 const shelves = [
 	{ heading: 'Reading', items: books },
@@ -24,7 +29,7 @@ const shelves = [
 	</header>
 
 	<div id="scene">
-		<Scene client:only="react" films={resolvedFilms} />
+		<Scene client:only="react" films={resolvedFilms} books={resolvedBooks} />
 	</div>
 
 	<!--
@@ -34,6 +39,7 @@ const shelves = [
 	-->
 	<section class="sr-only" aria-label="Site contents">
 		<p>This product uses the TMDB API but is not endorsed or certified by TMDB.</p>
+		<p>Book covers and details come from <a href="https://openlibrary.org">Open Library</a>.</p>
 		<h2>Links</h2>
 		<ul>
 			{site.links.map((link) => <li><a href={link.href}>{link.label}</a></li>)}

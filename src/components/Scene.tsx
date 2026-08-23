@@ -3,7 +3,9 @@ import { Canvas } from '@react-three/fiber'
 import { Preload } from '@react-three/drei'
 import { setFocus } from '../scene/focus'
 import { setFilms } from '../scene/filmArt'
+import { setBooks } from '../scene/bookArt'
 import type { Film } from '../data/tmdb'
+import type { Book } from '../data/openLibrary'
 import { palette } from '../scene/palette'
 import { Room } from '../scene/Room'
 import { CameraRig } from '../scene/CameraRig'
@@ -28,14 +30,24 @@ function Ready({ onReady }: { onReady: () => void }) {
 }
 
 /**
- * `films` is resolved against TMDB at build time and handed in as a prop, so the
- * API key stays on the server and the room makes no film requests of its own.
+ * Both shelves are resolved at build time and handed in as props: TMDB so the
+ * API key stays on the server, Open Library so the room makes no metadata
+ * requests of its own. Only the artwork itself is fetched by the browser.
  */
-export default function Scene({ films = [] }: { films?: (Film | null)[] }) {
+export default function Scene({
+  films = [],
+  books = [],
+}: {
+  films?: (Film | null)[]
+  books?: (Book | null)[]
+}) {
   const touch = useIsTouch()
-  // Before first paint, so the cabinet never renders a frame of blank cases
-  // when the data was there all along.
-  useState(() => setFilms(films))
+  // Before first paint, so neither shelf renders a frame of blank covers when
+  // the data was there all along.
+  useState(() => {
+    setFilms(films)
+    setBooks(books)
+  })
   const [loaded, setLoaded] = useState(false)
   const [waited, setWaited] = useState(false)
   const [timedOut, setTimedOut] = useState(false)

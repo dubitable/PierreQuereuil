@@ -7,6 +7,7 @@
  * turning *Paprika* into "Applause" and *La Haine* into "The Desperados!".
  */
 import type { Entry } from './collections'
+import { sameName } from './match'
 
 export type Film = {
   title: string
@@ -33,31 +34,6 @@ type SearchHit = {
   release_date?: string
   poster_path?: string | null
   backdrop_path?: string | null
-}
-
-const norm = (value: string) =>
-  value
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z ]/g, '')
-    .trim()
-
-/**
- * Surnames, loosely. Transliterations disagree on endings often enough that an
- * exact match is too strict — "Shepitkov" and TMDB's "Shepitko" are the same
- * person — so a shared five-letter stem counts.
- */
-function sameDirector(a: string, b: string) {
-  const left = norm(a).split(' ').filter(Boolean).pop()
-  const right = norm(b).split(' ').filter(Boolean).pop()
-  if (!left || !right) return false
-  if (left === right) return true
-  const stem = 5
-  return (
-    (left.length >= stem && right.startsWith(left.slice(0, stem))) ||
-    (right.length >= stem && left.startsWith(right.slice(0, stem)))
-  )
 }
 
 async function json<T>(url: string): Promise<T | null> {
@@ -91,7 +67,7 @@ async function lookupFilm(entry: Entry, key: string): Promise<Film | null> {
   let director = ''
   for (const hit of hits.slice(0, CANDIDATES)) {
     const credited = await directorOf(hit.id, key)
-    if (sameDirector(credited, entry.by)) {
+    if (sameName(credited, entry.by)) {
       chosen = hit
       director = credited
       break

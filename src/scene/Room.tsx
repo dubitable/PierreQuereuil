@@ -5,11 +5,23 @@ import { prefetchAlbums, useAlbums } from './appleMusic'
 import { useIsTouch } from './useIsTouch'
 import { stationById, useFocus } from './focus'
 import { clearHovered, setHovered, setSelected, type Credit } from './credit'
-import { useFilms, usePosters, useStill } from './filmArt'
+import { prefetchArtwork, useArtwork, useArtworkOne } from './art'
+import { useFilms } from './filmArt'
+import { useBooks } from './bookArt'
 import type { Film } from '../data/tmdb'
+import type { Book } from '../data/openLibrary'
 import type { Track } from './appleMusic'
 import { play, stop } from './player'
-import { CASE, Case, ScreenGlow, SLEEVE, Sleeve, Spine, TelevisionScreen, Turntable } from './Pieces'
+import {
+  BOOK,
+  CASE,
+  Cover,
+  ScreenGlow,
+  SLEEVE,
+  Swivel,
+  TelevisionScreen,
+  Turntable,
+} from './Pieces'
 import { ScreenLinks } from './ScreenLinks'
 import { palette } from './palette'
 import { Prop, TOP } from './useProp'
@@ -32,7 +44,22 @@ const SLEEVE_STEP = 0.052
 const SLEEVE_STAGGER = 0.032
 /** Wider on touch: a finger needs far more than the 14px this leaves on a phone. */
 const SLEEVE_STAGGER_TOUCH = 0.075
-const SPINE_PITCH = 0.028
+/**
+ * Books stand cover-out, three to a shelf. The shelf boards run from local
+ * x -0.18 to 0.18, so three jackets at this pitch span 0.355 of the 0.36
+ * available — side by side with nothing to spare and nothing overlapping.
+ */
+const BOOK_PITCH = 0.115
+/**
+ * Depth offset per book. Three 0.125 jackets cannot fit 0.36 of shelf without
+ * overlapping by about 10mm, so this has to clear a jacket's own 0.021
+ * thickness or neighbours intersect. The result is a gentle fan.
+ */
+const BOOK_STEP = 0.024
+/** Three jackets is what a 0.36 shelf holds at that pitch. */
+const SHELF_CAPACITY = 3
+/** Pulled out to the middle of the framed view, and big enough to read. */
+const BOOK_PICKED_SCALE = 1.45
 
 /** Cases stand on the cabinet top, to the left of the television. */
 const CASE_X = -0.295
@@ -57,13 +84,32 @@ const CASE_X_TOUCH = CASE_X + 0.035
 /** Depth between cases in the resting stack. A case is 0.014 thick. */
 const CASE_REST_STEP = 0.016
 /** Enough to read as held up and looked at, not enough to read as a prop. */
-const CASE_PICKED_SCALE = 1.25
+const CASE_PICKED_SCALE = 1.35
+/**
+ * Where a picked film parks: centred under the television's picture, out in
+ * front of the cabinet. The screen's underside is at y 0.349 and a cover at
+ * this scale reaches 0.261, so the two never overlap.
+ */
+const FILM_SHOWN: [number, number, number] = [-0.027, 0.19, 0.2]
+/**
+ * Milliseconds the cabinet stands empty between two films. Without the beat,
+ * picking a second film sends one cover home while the next flies out, and the
+ * two cross in mid-air. Sequencing them reads as changing the disc.
+ */
+const FILM_SWAP_MS = 200
 
 const trackCredit = (track: Track): Credit => ({
   title: track.trackName,
   subtitle: track.artistName,
   href: track.storeUrl,
   source: 'Apple Music',
+})
+
+const bookCredit = (book: Book): Credit => ({
+  title: book.title,
+  subtitle: [book.author, book.year].filter(Boolean).join(' · '),
+  href: book.olUrl,
+  source: 'Open Library',
 })
 
 const filmCredit = (film: Film): Credit => ({
@@ -75,8 +121,49 @@ const filmCredit = (film: Film): Credit => ({
 
 function Bookcase() {
   const station = stationById('books')
-  // Spread the list across the shelves rather than filling one and leaving two bare.
-  const perShelf = Math.ceil(books.length / SHELVES.length)
+  const focused = useFocus() === 'books'
+  // Resolved at build time; empty until the island hydrates, and permanently
+  // empty with no network at build. Both leave plain coloured jackets.
+  const resolved = useBooks()
+  const jackets = useArtwork(resolved.map((book) => book?.coverUrl))
+  const [picked, setPicked] = useState<number | null>(null)
+  const current = picked === null ? null : (resolved[picked] ?? null)
+  // The big scan, only for the book actually in hand.
+  const large = useArtworkOne(current?.largeUrl)
+  const shown = useRef<Credit | null>(null)
+
+  // Fill shelves to capacity and centre the rows in the case, rather than
+  // spreading thin: three books make one row on the middle shelf, not three
+  // lonely singletons. Seven would fill all three shelves from the bottom.
+  const rows = Math.ceil(books.length / SHELF_CAPACITY)
+  const firstShelf = Math.max(0, Math.floor((SHELVES.length - rows) / 2))
+
+  const credits = useMemo(
+    () => resolved.map((book) => (book ? bookCredit(book) : null)),
+    [resolved],
+  )
+
+  useEffect(() => {
+    if (focused) return
+    setPicked(null)
+    setHovered(null)
+  }, [focused])
+
+  useEffect(() => {
+    const credit = picked === null ? null : (credits[picked] ?? null)
+    // Every station shares this panel, so only write to it when this one's own
+    // selection actually changed.
+    if (credit === shown.current) return
+    shown.current = credit
+    setSelected(credit)
+  }, [picked, credits])
+
+  useEffect(
+    () => () => {
+      if (shown.current) setSelected(null)
+    },
+    [],
+  )
 
   return (
     <Station station={station}>
@@ -85,14 +172,45 @@ function Bookcase() {
       <Prop file="books" position={[0.09, SHELVES[2]!, 0.01]} rotation={[0, 0.3, 0]} />
 
       {books.map((entry, index) => {
-        const shelf = Math.floor(index / perShelf)
-        const row = Math.min(perShelf, books.length - shelf * perShelf)
-        const slot = index % perShelf
+        const isPicked = picked === index
+        const rowIndex = Math.floor(index / SHELF_CAPACITY)
+        const shelf = Math.min(firstShelf + rowIndex, SHELVES.length - 1)
+        const row = Math.min(SHELF_CAPACITY, books.length - rowIndex * SHELF_CAPACITY)
+        const slot = index % SHELF_CAPACITY
         // The top shelf shares its space with the stack of books lying flat.
         const nudge = shelf === 2 ? -0.09 : 0
-        const x = (slot - (row - 1) / 2) * SPINE_PITCH + nudge
+        const x = (slot - (row - 1) / 2) * BOOK_PITCH + nudge
+
+        const position: [number, number, number] = isPicked
+          ? // Dead centre of the framed view: the station aims at [0, 0.5, 0].
+            [0, 0.5, 0.3]
+          : [x, SHELVES[shelf]! + BOOK[1] / 2, slot * BOOK_STEP]
+        const rotation: [number, number, number] = isPicked
+          ? [0, 0.02, 0]
+          : [0, 0.04 - (index % 3) * 0.03, 0]
+
         return (
-          <Spine key={entry.title} entry={entry} index={index} position={[x, SHELVES[shelf]!, 0]} />
+          <Cover
+            key={entry.title}
+            entry={entry}
+            index={index}
+            texture={(isPicked ? large : null) ?? jackets[index] ?? null}
+            size={BOOK}
+            position={position}
+            rotation={rotation}
+            scale={isPicked ? BOOK_PICKED_SCALE : 1}
+            lift={{ y: 0.008, z: 0.02 }}
+            interactive={focused}
+            onHover={(isHovered) => {
+              // Side by side on the shelf, so nothing needs a trimmed collider.
+              if (isHovered) prefetchArtwork(resolved[index]?.largeUrl)
+              const credit = credits[index]
+              if (!credit) return
+              if (isHovered) setHovered(credit)
+              else clearHovered(credit)
+            }}
+            onSelect={() => setPicked(isPicked ? null : index)}
+          />
         )
       })}
     </Station>
@@ -163,7 +281,7 @@ function RecordPlayer() {
         // handled by the sleeve's oversized pointer target and its pop on
         // hover rather than by splaying them sideways.
         const position: [number, number, number] = isPlaying
-          ? [0, 0.105, 0.3]
+          ? [0, 0.15, 0.3]
           : focused
             ? [
                 -0.44 + (index - (records.length - 1) / 2) * stagger,
@@ -178,20 +296,22 @@ function RecordPlayer() {
             : [0, 0.12 + (index % 3) * 0.03, -0.14 + (index % 2) * 0.025]
 
         return (
-          <Sleeve
+          <Cover
             key={entry.title}
             entry={entry}
             index={index}
             texture={albums[index]?.texture ?? null}
+            size={SLEEVE}
             position={position}
             rotation={rotation}
+            lift={{ y: 0.014, z: 0.016 }}
             interactive={focused}
             reach={
               // Each sleeve is overlapped on its right by the one in front, so
               // its reachable strip is the stagger's width on its left edge.
               // The nearest sleeve is unobstructed and keeps a full target.
               focused && !isPlaying && index < records.length - 1
-                ? { width: stagger, center: -SLEEVE / 2 + stagger / 2 }
+                ? { width: stagger, center: -SLEEVE[0] / 2 + stagger / 2 }
                 : undefined
             }
             onHover={(isHovered) => {
@@ -213,7 +333,7 @@ function RecordPlayer() {
  * face is solid wood — so the cases stand on top of it, beside the television,
  * where their covers are actually visible.
  */
-const CASE_Y = TOP.cabinet + CASE.height / 2
+const CASE_Y = TOP.cabinet + CASE[1] / 2
 
 function Films() {
   const station = stationById('films')
@@ -226,12 +346,16 @@ function Films() {
   // Resolved at build time; empty until the island hydrates, and permanently
   // empty when no TMDB key was set. Both cases leave plain coloured cases.
   const resolved = useFilms()
-  const posters = usePosters(resolved)
+  const posters = useArtwork(resolved.map((film) => film?.posterUrl))
   const [picked, setPicked] = useState<number | null>(null)
-  const current = picked === null ? null : (resolved[picked] ?? null)
+  // What the cabinet is actually showing, which lags the selection during a
+  // swap so one cover is home before the next sets off.
+  const [onScreen, setOnScreen] = useState<number | null>(null)
+  const onScreenRef = useRef<number | null>(null)
+  const current = onScreen === null ? null : (resolved[onScreen] ?? null)
   // Only the film that is up on the television, at ~110KB a still.
-  const still = useStill(current?.stillUrl ?? null)
-  const shown = useRef<Credit | null>(null)
+  const still = useArtworkOne(current?.stillUrl)
+  const credited = useRef<Credit | null>(null)
 
   const credits = useMemo(
     () => resolved.map((film) => (film ? filmCredit(film) : null)),
@@ -244,18 +368,41 @@ function Films() {
     setHovered(null)
   }, [focused])
 
+  // Depends on `picked` alone: reading `onScreen` here would let the effect
+  // re-fire the moment it clears and skip the pause it just scheduled.
+  useEffect(() => {
+    const from = onScreenRef.current
+    if (picked === from) return
+
+    if (picked === null || from === null) {
+      onScreenRef.current = picked
+      setOnScreen(picked)
+      return
+    }
+
+    onScreenRef.current = null
+    setOnScreen(null)
+    const timer = setTimeout(() => {
+      onScreenRef.current = picked
+      setOnScreen(picked)
+    }, FILM_SWAP_MS)
+    return () => clearTimeout(timer)
+  }, [picked])
+
+  // The panel follows the click rather than the animation: naming the film you
+  // just asked for should not wait on a cover flying home.
   useEffect(() => {
     const credit = picked === null ? null : (credits[picked] ?? null)
-    // The records share this panel, so never write to it unless this station's
-    // own selection actually changed.
-    if (credit === shown.current) return
-    shown.current = credit
+    // The other stations share this panel, so never write to it unless this
+    // station's own selection actually changed.
+    if (credit === credited.current) return
+    credited.current = credit
     setSelected(credit)
   }, [picked, credits])
 
   useEffect(
     () => () => {
-      if (shown.current) setSelected(null)
+      if (credited.current) setSelected(null)
     },
     [],
   )
@@ -268,15 +415,13 @@ function Films() {
         position={[0.02, TOP.cabinet, 0]}
         rotation={[0, 0.06, 0]}
         still={still}
-        active={picked !== null}
+        active={onScreen !== null}
       />
 
       {films.map((entry, index) => {
-        const isPicked = picked === index
+        const isPicked = onScreen === index
         const position: [number, number, number] = isPicked
-          ? // Out in front of the cabinet and clear of the screen, so the
-            // cover and the still can be read at the same time.
-            [CASE_X, CASE_Y + 0.075, 0.26]
+          ? FILM_SHOWN
           : focused
             ? [
                 fanX + (index - (films.length - 1) / 2) * stagger,
@@ -291,29 +436,32 @@ function Films() {
             : [0, 0.1 + (index % 3) * 0.02, -0.04 + (index % 2) * 0.02]
 
         return (
-          <Case
+          <Cover
             key={entry.title}
             entry={entry}
             index={index}
             texture={posters[index] ?? null}
+            size={CASE}
             position={position}
             rotation={rotation}
             scale={isPicked ? CASE_PICKED_SCALE : 1}
+            lift={{ y: 0.012, z: 0.014 }}
             interactive={focused}
             reach={
               // Same geometry as the sleeves: each case is overlapped on its
               // right by the one in front of it, leaving a strip on the left.
               focused && !isPicked && index < films.length - 1
-                ? { width: stagger, center: -CASE.width / 2 + stagger / 2 }
+                ? { width: stagger, center: -CASE[0] / 2 + stagger / 2 }
                 : undefined
             }
             onHover={(isHovered) => {
+              if (isHovered) prefetchArtwork(resolved[index]?.stillUrl)
               const credit = credits[index]
               if (!credit) return
               if (isHovered) setHovered(credit)
               else clearHovered(credit)
             }}
-            onSelect={() => setPicked(isPicked ? null : index)}
+            onSelect={() => setPicked(picked === index ? null : index)}
           />
         )
       })}
@@ -337,13 +485,15 @@ function Desk() {
       />
       <Prop file="computerKeyboard" position={[0, TOP.desk, 0.075]} />
       <Prop file="computerMouse" position={[0.21, TOP.desk, 0.075]} rotation={[0, -0.15, 0]} />
-      <Prop
-        file="chairDesk"
-        position={[0.4, 0, 0.55]}
-        rotation={[0, Math.PI * 0.82, 0]}
-        scale={0.95}
-        materials={{ carpet: '#c2bcae', carpetDarker: '#a9a396' }}
-      />
+      {/* The model's own swivel column lands within 3mm of where `Prop`
+          centres it, so the group's Y axis is already the right pivot. */}
+      <Swivel position={[0.4, 0, 0.55]} rotation={[0, Math.PI * 0.82, 0]} capture={focused}>
+        <Prop
+          file="chairDesk"
+          scale={0.95}
+          materials={{ carpet: '#c2bcae', carpetDarker: '#a9a396' }}
+        />
+      </Swivel>
     </Station>
   )
 }

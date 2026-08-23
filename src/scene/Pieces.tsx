@@ -1,57 +1,40 @@
-import { useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useFrame, type ThreeElements, type ThreeEvent } from '@react-three/fiber'
 import * as THREE from 'three'
 import { palette, spineColor } from './palette'
-import { cover } from './filmArt'
+import { cover } from './art'
+import { setGrabbing } from './grabbing'
 import type { Entry } from '../data/collections'
-
-/** Deterministic jitter so the room looks hand-arranged but never reshuffles. */
-const wobble = (seed: number) => (Math.sin(seed * 12.9898) * 43758.5453) % 1
 
 /** Frame-rate independent approach toward a target. */
 const approach = (lambda: number, dt: number) => 1 - Math.exp(-lambda * dt)
 
-/** A book standing on a shelf, tilted a little. */
-export function Spine({
-  entry,
-  index,
-  position,
-}: {
-  entry: Entry
-  index: number
-  position: [number, number, number]
-}) {
-  const height = 0.15 + Math.abs(wobble(index + 1)) * 0.05
-  const tilt = Math.abs(wobble(index + 4)) > 0.72 ? wobble(index + 4) * 0.16 : 0
+export type Size = [number, number, number]
 
-  return (
-    <group position={position} rotation={[0, 0, tilt]}>
-      <mesh position={[0, height / 2, 0]} castShadow receiveShadow>
-        <boxGeometry args={[0.021, height, 0.125]} />
-        <meshStandardMaterial
-          color={entry.color ?? spineColor(index)}
-          roughness={0.92}
-          metalness={0}
-        />
-      </mesh>
-    </group>
-  )
-}
+/** Album sleeve, DVD case, book jacket: width, height, thickness. */
+export const SLEEVE: Size = [0.185, 0.185, 0.007]
+export const CASE: Size = [0.09, 0.105, 0.014]
+export const BOOK: Size = [0.125, 0.177, 0.021]
+/** How far a hovered object lifts and comes forward. */
+type Lift = { y: number; z: number }
 
-export const SLEEVE = 0.185
 const scratch = new THREE.Vector3()
 
 /**
- * A record sleeve. It eases toward whatever position the shelf hands it, so
- * the same component covers sitting in the stack, fanning out when the station
- * is focused, and standing out front while its clip plays.
+ * Anything on a shelf with artwork on its face. One component covers all three
+ * shelves: a record sleeve, a DVD case and a book are the same object at
+ * different sizes, and they behave identically — they ease toward whatever the
+ * shelf hands them, lift on hover, and hand back a click.
  */
-export function Sleeve({
+export function Cover({
   entry,
   index,
   texture,
+  size,
   position,
   rotation,
+  scale = 1,
+  lift,
   interactive,
   reach,
   onHover,
@@ -60,14 +43,18 @@ export function Sleeve({
   entry: Entry
   index: number
   texture: THREE.Texture | null
+  size: Size
   position: [number, number, number]
   rotation: [number, number, number]
+  scale?: number
+  lift: Lift
   interactive: boolean
   /**
-   * The band of this sleeve that is actually visible past the one in front,
-   * as { width, center } in local units. Sizing the collider to the strip is
-   * what makes the sleeves behind reachable: a full-width collider on the
-   * front sleeve would catch every ray aimed at the ones behind it.
+   * The band of this object that is actually visible past the one in front, as
+   * { width, center } in local units. Sizing the collider to the strip is what
+   * makes the ones behind reachable: a full-width collider on the front sleeve
+   * would catch every ray aimed at the ones behind it. Objects standing side by
+   * side rather than stacked in depth do not need it.
    */
   reach?: { width: number; center: number }
   onHover?: (hovered: boolean) => void
@@ -76,30 +63,32 @@ export function Sleeve({
   const group = useRef<THREE.Group>(null)
   const front = useRef<THREE.MeshStandardMaterial>(null)
   const [hovered, setHovered] = useState(false)
+  const [width, height, depth] = size
 
-  // Artwork arrives after the material has already compiled, and in three a
-  // material that gained a map needs recompiling before it will sample it.
-  // React Three Fiber does not flag this for us.
+  // Artwork lands long after the material compiled, and three will not sample a
+  // map that appeared afterwards until the material is flagged for recompile.
+  // React Three Fiber does not do this for us.
   useLayoutEffect(() => {
+    cover(texture, width / height)
     if (front.current) front.current.needsUpdate = true
-  }, [texture])
+  }, [texture, width, height])
 
   useFrame((_, delta) => {
     const node = group.current
     if (!node) return
     const k = approach(9, Math.min(delta, 1 / 30))
-    // Hovering nudges the sleeve up and forward — enough to read as picked
-    // out of the row, not enough to jump.
+    // Enough to read as picked out of the row, not enough to jump.
     const raised = hovered && interactive
     scratch.set(
       position[0],
-      position[1] + (raised ? 0.014 : 0),
-      position[2] + (raised ? 0.016 : 0),
+      position[1] + (raised ? lift.y : 0),
+      position[2] + (raised ? lift.z : 0),
     )
     node.position.lerp(scratch, k)
     node.rotation.x += (rotation[0] - node.rotation.x) * k
     node.rotation.y += (rotation[1] - node.rotation.y) * k
     node.rotation.z += (rotation[2] - node.rotation.z) * k
+    node.scale.setScalar(node.scale.x + (scale - node.scale.x) * k)
   })
 
   const hover = (value: boolean) => {
@@ -128,131 +117,15 @@ export function Sleeve({
         onSelect()
       }}
     >
-      {/* Pointer target. Invisible meshes are skipped by the raycaster, hence
-          a zero-opacity material rather than `visible={false}`. */}
-      <mesh position={[reach ? reach.center : 0, 0.025, 0.012]}>
-        <boxGeometry args={[reach ? reach.width : SLEEVE, SLEEVE + 0.06, 0.03]} />
-        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-      </mesh>
-
-      <mesh castShadow receiveShadow>
-        <boxGeometry args={[SLEEVE, SLEEVE, 0.007]} />
-        {faces.map((face) => (
-          <meshStandardMaterial
-            key={face}
-            ref={face === 4 ? front : undefined}
-            attach={`material-${face}`}
-            color={face === 4 && texture ? '#ffffff' : flat}
-            map={face === 4 ? texture : null}
-            roughness={0.95}
-            metalness={0}
-          />
-        ))}
-      </mesh>
-    </group>
-  )
-}
-
-/** Case dimensions: a DVD keep case, cover-out. */
-export const CASE = { width: 0.09, height: 0.105, depth: 0.014 }
-const CASE_ASPECT = CASE.width / CASE.height
-
-/**
- * A DVD case, cover-out. Same deal as `Sleeve`: it eases toward whatever the
- * shelf hands it, so one component covers sitting in the stack, fanning out
- * when the station is focused, and standing out front while its film is up on
- * the television.
- */
-export function Case({
-  entry,
-  index,
-  texture,
-  position,
-  rotation,
-  scale = 1,
-  interactive,
-  reach,
-  onHover,
-  onSelect,
-}: {
-  entry: Entry
-  index: number
-  texture: THREE.Texture | null
-  /** The case's centre, not the surface it stands on. */
-  position: [number, number, number]
-  rotation: [number, number, number]
-  scale?: number
-  interactive: boolean
-  /** The strip of this case left visible by the one in front. See `Sleeve`. */
-  reach?: { width: number; center: number }
-  onHover?: (hovered: boolean) => void
-  onSelect: () => void
-}) {
-  const group = useRef<THREE.Group>(null)
-  const front = useRef<THREE.MeshStandardMaterial>(null)
-  const [hovered, setHovered] = useState(false)
-
-  // Posters land long after the material compiled, and three will not sample a
-  // map that appeared afterwards until the material is flagged for recompile.
-  useLayoutEffect(() => {
-    cover(texture, CASE_ASPECT)
-    if (front.current) front.current.needsUpdate = true
-  }, [texture])
-
-  useFrame((_, delta) => {
-    const node = group.current
-    if (!node) return
-    const k = approach(9, Math.min(delta, 1 / 30))
-    const raised = hovered && interactive
-    scratch.set(
-      position[0],
-      position[1] + (raised ? 0.012 : 0),
-      position[2] + (raised ? 0.014 : 0),
-    )
-    node.position.lerp(scratch, k)
-    node.rotation.x += (rotation[0] - node.rotation.x) * k
-    node.rotation.y += (rotation[1] - node.rotation.y) * k
-    node.rotation.z += (rotation[2] - node.rotation.z) * k
-    const s = node.scale.x + (scale - node.scale.x) * k
-    node.scale.setScalar(s)
-  })
-
-  const hover = (value: boolean) => {
-    setHovered(value)
-    if (interactive) document.body.style.cursor = value ? 'pointer' : 'auto'
-    onHover?.(value)
-  }
-
-  const flat = entry.color ?? spineColor(index + 4)
-  const faces = [0, 1, 2, 3, 4, 5]
-
-  return (
-    <group
-      ref={group}
-      onPointerOver={(event) => {
-        if (!interactive) return
-        event.stopPropagation()
-        hover(true)
-      }}
-      onPointerOut={() => hover(false)}
-      onClick={(event) => {
-        if (!interactive) return
-        event.stopPropagation()
-        hover(false)
-        onSelect()
-      }}
-    >
-      {/* Pointer target. The raycaster skips invisible meshes, so this is a
+      {/* Pointer target. The raycaster skips invisible meshes, hence a
           zero-opacity material rather than `visible={false}`. */}
-      <mesh position={[reach ? reach.center : 0, 0, 0.012]}>
-        <boxGeometry
-          args={[reach ? reach.width : CASE.width, CASE.height + 0.02, 0.03]}
-        />
+      <mesh position={[reach ? reach.center : 0, 0, depth]}>
+        <boxGeometry args={[reach ? reach.width : width, height + 0.03, 0.03]} />
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />
       </mesh>
 
       <mesh castShadow receiveShadow>
-        <boxGeometry args={[CASE.width, CASE.height, CASE.depth]} />
+        <boxGeometry args={size} />
         {faces.map((face) => (
           <meshStandardMaterial
             key={face}
@@ -260,7 +133,7 @@ export function Case({
             attach={`material-${face}`}
             color={face === 4 && texture ? '#ffffff' : flat}
             map={face === 4 ? texture : null}
-            roughness={0.9}
+            roughness={0.93}
             metalness={0}
           />
         ))}
@@ -277,8 +150,12 @@ export function Case({
  * than the recess so the bezel still frames it and nothing z-fights.
  */
 const SCREEN = {
-  width: 0.222,
-  height: 0.192,
+  // Overshoots the 0.232 x 0.202 recess on purpose. The picture sits at the
+  // bottom of a 20mm-deep well, so the surplus is hidden behind the front face
+  // — and covering the corners matters more than matching the opening, which
+  // at the exact size left the model's dark screen showing at the edges.
+  width: 0.24,
+  height: 0.21,
   offset: [-0.054, 0.135, 0.116] as [number, number, number],
 }
 const SCREEN_ASPECT = SCREEN.width / SCREEN.height
@@ -328,9 +205,7 @@ export function TelevisionScreen({
         <planeGeometry args={[SCREEN.width, SCREEN.height]} />
         <meshBasicMaterial ref={tube} color={SCREEN_OFF} toneMapped={false} />
       </mesh>
-      <mesh
-        position={[SCREEN.offset[0], SCREEN.offset[1], SCREEN.offset[2] + 0.0006]}
-      >
+      <mesh position={[SCREEN.offset[0], SCREEN.offset[1], SCREEN.offset[2] + 0.0006]}>
         <planeGeometry args={[SCREEN.width, SCREEN.height]} />
         <meshBasicMaterial
           ref={picture}
@@ -450,5 +325,150 @@ export function ScreenGlow({ position }: { position: [number, number, number] })
       <planeGeometry args={[0.315, 0.175]} />
       <meshBasicMaterial color="#d9e6e1" toneMapped={false} />
     </mesh>
+  )
+}
+
+/**
+ * Radians of turn per pixel dragged. Deliberately screen-space rather than
+ * intersecting the pointer ray with a horizontal plane through the pivot: the
+ * desk camera rides at about 7.6 degrees, where that plane is so grazing the
+ * mapping goes unstable a few centimetres out from the axis.
+ */
+const DRAG_TURN = 0.011
+/** Ceiling on a flick, radians per second, past which it reads as a fan. */
+const FLICK_MAX = 13
+/** A release this long after the last movement is a set-down, not a flick. */
+const FLICK_STALE = 90
+/** Pixels of travel before a press counts as a drag rather than a click. */
+const DRAG_SLOP = 3
+/** Coasts down over a few seconds, the way a real castor chair does. */
+const SPIN_DRAG = 0.85
+const SPIN_STOP = 0.05
+
+/**
+ * Anything you can take hold of and spin. Press and it follows your hand;
+ * let go while still moving and it carries on and winds down; let go after
+ * holding it still and it stays where you put it.
+ *
+ * The spin lives on an inner group so it survives re-renders: the outer group
+ * takes its placement declaratively, and React Three Fiber would reset a
+ * rotation it also manages from props.
+ */
+export function Swivel({
+  children,
+  capture,
+  ...props
+}: {
+  children: ReactNode
+  /**
+   * Swallow a click rather than letting the station behind it act. Set once
+   * the station is focused, where its own handler would toggle focus back off
+   * — unfocused, a click should still bring the camera in. A drag always
+   * swallows it, whatever this says.
+   */
+  capture?: boolean
+} & ThreeElements['group']) {
+  const spin = useRef<THREE.Group>(null)
+  const velocity = useRef(0)
+  const moved = useRef(0)
+  const flick = useRef<{ speed: number; time: number } | null>(null)
+  const release = useRef<(() => void) | null>(null)
+
+  // A drag that outlives its component would leave listeners on the window.
+  useEffect(() => () => release.current?.(), [])
+
+  useFrame((_, delta) => {
+    const node = spin.current
+    if (!node || velocity.current === 0) return
+    const dt = Math.min(delta, 1 / 30)
+    node.rotation.y += velocity.current * dt
+    velocity.current *= Math.exp(-SPIN_DRAG * dt)
+    if (Math.abs(velocity.current) < SPIN_STOP) velocity.current = 0
+  })
+
+  const grab = (event: ThreeEvent<PointerEvent>) => {
+    const node = spin.current
+    // A press can arrive more than once: the chair is two meshes, and a ray
+    // through both gives two intersections that resolve to this same group.
+    // Without this the second call would orphan the first drag's listeners and
+    // the chair would follow the cursor for good.
+    if (!node || release.current) return
+    velocity.current = 0
+    moved.current = 0
+    flick.current = null
+    setGrabbing(true)
+    document.body.style.cursor = 'grabbing'
+
+    // Tracked on the window rather than the mesh so the chair keeps following
+    // once your hand has left it, which is most of any real drag.
+    let last = { x: event.nativeEvent.clientX, time: performance.now() }
+
+    const move = (native: PointerEvent) => {
+      // Releasing outside the window never delivers a pointerup, so the next
+      // move with no button down is the drag's real end.
+      if (native.pointerType === 'mouse' && native.buttons === 0) {
+        up()
+        return
+      }
+      const now = performance.now()
+      const dx = native.clientX - last.x
+      const dt = Math.max(now - last.time, 1) / 1000
+      last = { x: native.clientX, time: now }
+      moved.current += Math.abs(dx)
+      node.rotation.y += dx * DRAG_TURN
+      const instant = (dx * DRAG_TURN) / dt
+      // Smoothed, so one stuttered frame at the end does not decide the flick.
+      flick.current = {
+        speed: flick.current ? flick.current.speed * 0.4 + instant * 0.6 : instant,
+        time: now,
+      }
+    }
+
+    // Each drag tears down its own listeners rather than whatever the ref
+    // happens to hold, so a stray second press can never unhook the live one.
+    const stop = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      window.removeEventListener('pointercancel', up)
+      if (release.current === stop) release.current = null
+      setGrabbing(false)
+      document.body.style.cursor = 'auto'
+    }
+
+    const up = () => {
+      stop()
+      const thrown = flick.current
+      if (thrown && performance.now() - thrown.time < FLICK_STALE) {
+        velocity.current = THREE.MathUtils.clamp(thrown.speed, -FLICK_MAX, FLICK_MAX)
+      }
+      flick.current = null
+    }
+
+    release.current = stop
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', up)
+  }
+
+  return (
+    <group {...props}>
+      <group
+        ref={spin}
+        onPointerOver={(event) => {
+          event.stopPropagation()
+          if (!release.current) document.body.style.cursor = 'grab'
+        }}
+        onPointerOut={() => {
+          if (!release.current) document.body.style.cursor = 'auto'
+        }}
+        onPointerDown={grab}
+        onClick={(event) => {
+          // A drag is never also a click on the station behind it.
+          if (capture || moved.current > DRAG_SLOP) event.stopPropagation()
+        }}
+      >
+        {children}
+      </group>
+    </group>
   )
 }
