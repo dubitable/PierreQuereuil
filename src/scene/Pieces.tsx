@@ -259,6 +259,13 @@ const PLATTER_Y = 0.046
 const ARM_PARKED = 0.5
 const ARM_PLAYING = 0.02
 const ARM_Y = 0.048
+/** How far above the platter the record starts and returns to. */
+const DISC_LIFT = 0.05
+/**
+ * The record is fully solid above this much of the cue and fades below it, so
+ * it arrives and leaves instead of blinking into being at the top of its lift.
+ */
+const DISC_FADE = 0.45
 
 /**
  * Built from primitives rather than sourced — the furniture kit has no record
@@ -277,6 +284,7 @@ export function Turntable({
   const disc = useRef<THREE.Group>(null)
   const arm = useRef<THREE.Group>(null)
   const label = useRef<THREE.MeshStandardMaterial>(null)
+  const vinyl = useRef<THREE.MeshStandardMaterial>(null)
   const cue = useRef(0)
   const spin = useRef(0)
   const dark = useMemo(() => ({ color: palette.vinyl, roughness: 0.7 }), [])
@@ -296,8 +304,14 @@ export function Turntable({
     if (cued.moving || active) state.invalidate()
 
     if (disc.current) {
-      disc.current.visible = c > 0.02
-      disc.current.position.y = PLATTER_Y + (1 - c) * 0.1
+      // Fades as it lifts. Cutting on a visibility threshold left the record
+      // disappearing while still high above the platter, which read as it
+      // popping out of the air.
+      const solid = Math.min(c / DISC_FADE, 1)
+      disc.current.visible = solid > 0.004
+      disc.current.position.y = PLATTER_Y + (1 - c) * DISC_LIFT
+      if (vinyl.current) vinyl.current.opacity = solid
+      if (label.current) label.current.opacity = solid
       // Spins up only once it has settled, and coasts down as it lifts away.
       if (c > 0.75) spin.current += dt * 3.6 * ((c - 0.75) / 0.25)
       disc.current.rotation.y = spin.current
@@ -325,7 +339,7 @@ export function Turntable({
       <group ref={disc} position={[-0.03, PLATTER_Y, 0]} visible={false}>
         <mesh castShadow>
           <cylinderGeometry args={[0.078, 0.078, 0.004, 40]} />
-          <meshStandardMaterial {...dark} metalness={0} />
+          <meshStandardMaterial ref={vinyl} {...dark} metalness={0} transparent opacity={0} />
         </mesh>
         <mesh position={[0, 0.003, 0]} rotation={[-Math.PI / 2, 0, 0]}>
           <circleGeometry args={[0.026, 32]} />
@@ -335,6 +349,8 @@ export function Turntable({
             map={artwork}
             roughness={0.9}
             metalness={0}
+            transparent
+            opacity={0}
           />
         </mesh>
       </group>

@@ -30,6 +30,22 @@ export const palette = {
   label: '#d7a08b',
 }
 
+/**
+ * The room after dark. Only the surfaces that fill the frame change colour —
+ * everything else is carried by turning the lights down and letting the floor
+ * lamp do the work, which is what a room actually does at night.
+ */
+export const night = {
+  background: '#14181b',
+  floor: '#232a30',
+}
+
+/** Light levels for each half of the day, by their role in `Scene`. */
+export const lighting = {
+  day: { ambient: 1.4, hemisphere: 0.7, key: 1.9, fill: 0.5, lamp: 0 },
+  night: { ambient: 0.26, hemisphere: 0.14, key: 0.28, fill: 0.1, lamp: 7 },
+} as const
+
 /** Muted spine colours, cycled through books, sleeves, and DVD cases. */
 export const spines = [
   '#b26a4f',

@@ -1,7 +1,8 @@
 import { Suspense, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import { toggleFocus, useFocus, type Station as StationConfig } from './focus'
+import { setFocus, toggleFocus, useFocus, type Station as StationConfig } from './focus'
+import { useIsTouch } from './useIsTouch'
 
 /**
  * A clickable zone of the room. Hovering lifts it slightly, which is the only
@@ -19,6 +20,7 @@ export function Station({
   detail?: ReactNode
 }) {
   const focus = useFocus()
+  const touch = useIsTouch()
   const [hovered, setHovered] = useState(false)
   const inner = useRef<THREE.Group>(null)
 
@@ -63,7 +65,12 @@ export function Station({
         onClick={(event) => {
           event.stopPropagation()
           setCursor(false)
-          toggleFocus(station.id)
+          // On touch the wide view is unreachable by design: the carousel
+          // always rests on a station, and there is no pointer-missed tap or
+          // Escape key to come back from nowhere. Toggling here was the one
+          // way left to strand someone in it.
+          if (touch) setFocus(station.id)
+          else toggleFocus(station.id)
         }}
       >
         {children}

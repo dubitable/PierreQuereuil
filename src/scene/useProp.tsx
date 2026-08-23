@@ -11,24 +11,33 @@ import { KENNEY_MATERIALS } from './palette'
  */
 const themed = new Map<string, THREE.MeshStandardMaterial>()
 
-export type MaterialOverrides = Record<string, string>
+/**
+ * Either a replacement colour, or a colour plus how hard the surface glows.
+ * The lampshade is the only thing that needs the second form, and only after
+ * dark.
+ */
+export type MaterialOverride = string | { color: string; glow: number }
+export type MaterialOverrides = Record<string, MaterialOverride>
 
 function themedMaterial(source: THREE.Material, overrides?: MaterialOverrides): THREE.Material {
   const name = source.name
-  const hex = overrides?.[name] ?? KENNEY_MATERIALS[name]
+  const override = overrides?.[name]
+  const hex = (typeof override === 'string' ? override : override?.color) ?? KENNEY_MATERIALS[name]
   if (!hex) return source
-  // Keyed by colour as well as name, so overridden props get their own
-  // material while everything else keeps sharing one.
-  const key = `${name}|${hex}`
+  // The lampshade reads as lit rather than merely pale, and burns brighter
+  // once it is the only light in the room.
+  const glow = typeof override === 'object' ? override.glow : name === 'lamp' ? 0.55 : 0
+  // Keyed by colour and glow as well as name, so overridden props get their
+  // own material while everything else keeps sharing one.
+  const key = `${name}|${hex}|${glow}`
   let material = themed.get(key)
   if (!material) {
     material = new THREE.MeshStandardMaterial({
       color: new THREE.Color(hex),
       roughness: name === 'metal' || name === 'metalDark' ? 0.55 : 0.9,
       metalness: 0,
-      // The lampshade reads as lit rather than merely pale.
-      emissive: new THREE.Color(name === 'lamp' ? '#ffe9b0' : '#000000'),
-      emissiveIntensity: name === 'lamp' ? 0.55 : 0,
+      emissive: new THREE.Color(glow > 0 ? hex : '#000000'),
+      emissiveIntensity: glow,
     })
     material.name = name
     themed.set(key, material)

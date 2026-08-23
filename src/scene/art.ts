@@ -7,14 +7,6 @@ import * as THREE from 'three'
  * using it have compiled, which is what most of this file exists to handle.
  */
 
-/**
- * Anisotropic filtering costs a sample per tap. Worth it on a desktop where a
- * cover is seen at an angle; not on a phone. Matches the query `useIsTouch`
- * uses, but these are plain modules with no hook to call.
- */
-const coarse = () =>
-  typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches
-
 const textures = new Map<string, Promise<THREE.Texture | null>>()
 
 /**
@@ -31,7 +23,7 @@ function loadImage(url: string): Promise<THREE.Texture | null> {
     .loadAsync(url)
     .then((texture) => {
       texture.colorSpace = THREE.SRGBColorSpace
-      texture.anisotropy = coarse() ? 1 : 4
+      texture.anisotropy = 4
       return texture
     })
     .catch(() => null)

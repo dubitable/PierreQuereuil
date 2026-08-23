@@ -51,8 +51,8 @@ export function CameraRig({ touch }: { touch: boolean }) {
   const goalTarget = useRef(new THREE.Vector3())
   const target = useRef(ROOM.target.clone())
   const still = useRef(prefersReducedMotion())
-  /** Eases from 1 to 0 across the opening shot. */
-  const opening = useRef(0)
+  /** When the opening shot began, or 0 once it is over. */
+  const openedAt = useRef(0)
 
   // Pointer parallax, on pointer devices only. On touch `pointermove` fires
   // only while a finger is down and reports its absolute position, which makes
@@ -80,12 +80,8 @@ export function CameraRig({ touch }: { touch: boolean }) {
   // The opening shot: start pulled back on the desk, then settle in.
   useEffect(() => {
     if (!touch) return
-    opening.current = 1
+    openedAt.current = performance.now()
     setFocus(OPENING_STATION)
-    const timer = setTimeout(() => {
-      opening.current = 0
-    }, OPENING_MS)
-    return () => clearTimeout(timer)
   }, [touch])
 
   // Swipe between stations. They are declared left to right, so the order
@@ -125,9 +121,15 @@ export function CameraRig({ touch }: { touch: boolean }) {
     const aspect = size.width / size.height
 
     if (focus) {
-      // Eases the opening shot's extra width away rather than cutting.
-      opening.current = THREE.MathUtils.lerp(opening.current, 0, 1 - Math.exp(-1.6 * dt))
-      const zoom = 1 + (OPENING_ZOOM - 1) * opening.current
+      // Driven by elapsed time rather than eased toward zero. An exponential
+      // approach never actually arrives, so the old version was still 10% wide
+      // when its timer cut it to zero — a visible pop a second and a half in.
+      // A curve over a known duration lands exactly, and on time.
+      const elapsed = openedAt.current ? (performance.now() - openedAt.current) / OPENING_MS : 1
+      const progress = Math.min(elapsed, 1)
+      if (progress >= 1) openedAt.current = 0
+      const settled = 1 - (1 - progress) ** 3
+      const zoom = 1 + (OPENING_ZOOM - 1) * (1 - settled)
       const pose = focusPose(stationById(focus), aspect, zoom)
       goalPosition.current.copy(pose.position)
       goalTarget.current.copy(pose.target)
@@ -148,7 +150,7 @@ export function CameraRig({ touch }: { touch: boolean }) {
     const flying = damp(camera.position, goalPosition.current, lambda, dt)
     const turning = damp(target.current, goalTarget.current, lambda, dt)
     camera.lookAt(target.current)
-    if (flying || turning || opening.current > 0) state.invalidate()
+    if (flying || turning || openedAt.current !== 0) state.invalidate()
   })
 
   return null

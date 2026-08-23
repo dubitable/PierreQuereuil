@@ -22,6 +22,18 @@
   --accent: #b26a4f;
 }
 
+/*
+ * After dark. Set by the theme store when the floor lamp is clicked, so the
+ * page around the room changes with it rather than staying a bright card
+ * floating over a dark scene.
+ */
+:root[data-theme='night'] {
+  --bg: #14181b;
+  --ink: #ece6da;
+  --ink-soft: #8f9298;
+  --accent: #e0a184;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -33,6 +45,9 @@ body {
   overflow: hidden;
   background: var(--bg);
   color: var(--ink);
+  transition:
+    background 600ms ease,
+    color 600ms ease;
   font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }

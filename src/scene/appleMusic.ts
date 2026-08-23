@@ -19,14 +19,6 @@ export type Track = {
 
 export type Album = { track: Track; texture: THREE.Texture | null }
 
-/**
- * Anisotropic filtering costs a sample per tap. Worth it on a desktop where a
- * cover is seen at an angle; not on a phone. Matches the query `useIsTouch`
- * uses, but these are plain modules with no hook to call.
- */
-const coarse = () =>
-  typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches
-
 const SEARCH = 'https://itunes.apple.com/search'
 const ARTWORK_SIZE = '300x300bb'
 const lookups = new Map<string, Promise<Track | null>>()
@@ -92,7 +84,7 @@ function loadArtwork(url: string): Promise<THREE.Texture | null> {
     .loadAsync(url)
     .then((texture) => {
       texture.colorSpace = THREE.SRGBColorSpace
-      texture.anisotropy = coarse() ? 1 : 4
+      texture.anisotropy = 4
       return texture
     })
     .catch(() => null)

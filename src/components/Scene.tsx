@@ -6,7 +6,8 @@ import { setFilms } from '../scene/filmArt'
 import { setBooks } from '../scene/bookArt'
 import type { Film } from '../data/tmdb'
 import type { Book } from '../data/openLibrary'
-import { palette } from '../scene/palette'
+import { lighting, night, palette } from '../scene/palette'
+import { useTheme } from '../scene/theme'
 import { Room } from '../scene/Room'
 import { CameraRig } from '../scene/CameraRig'
 import { Loader } from './Loader'
@@ -43,6 +44,9 @@ export default function Scene({
   books?: (Book | null)[]
 }) {
   const touch = useIsTouch()
+  const theme = useTheme()
+  const lights = lighting[theme]
+  const ground = theme === 'night' ? night.background : palette.background
   const [sample, setSample] = useState<Parameters<typeof StatsPanel>[0]['sample']>(null)
   const [stats] = useState(wantsStats)
   // Before first paint, so neither shelf renders a frame of blank covers when
@@ -76,14 +80,11 @@ export default function Scene({
         // cost nothing. Every easing `useFrame` asks for its own next frame
         // while it is still moving and stops when it settles.
         frameloop="demand"
-        // PCF's extra taps are per-fragment work a 5" screen will not show.
-        shadows={touch ? 'basic' : 'percentage'}
+        shadows="percentage"
         // Phone GPUs do not need a 2x buffer under 2048px shadows.
-        dpr={touch ? [1, 1.25] : [1, 2]}
+        dpr={touch ? [1, 1.5] : [1, 2]}
         camera={{ fov: 32, position: [0, 1.2, 3.5], near: 0.1, far: 60 }}
-        // Multisampling is the single most expensive thing a phone can be
-        // asked for here, and the room is flat colour on flat colour.
-        gl={{ antialias: !touch, powerPreference: 'high-performance' }}
+        gl={{ antialias: true, powerPreference: 'high-performance' }}
         // On touch there is no wide view to return to: the carousel always
         // rests on a station.
         onPointerMissed={touch ? undefined : () => setFocus(null)}
@@ -92,19 +93,17 @@ export default function Scene({
           transition: 'opacity 900ms cubic-bezier(0.22, 1, 0.36, 1)',
         }}
       >
-        <color attach="background" args={[palette.background]} />
+        <color attach="background" args={[ground]} />
         {/* Fades the floor into the background so its edge never reads as a horizon. */}
-        <fog attach="fog" args={[palette.background, 7, 16]} />
+        <fog attach="fog" args={[ground, 7, 16]} />
 
-        {/* Four lights is four sets of per-fragment maths. Phones get the key
-            light and ambient only, lifted to stand in for the two that go. */}
-        <ambientLight intensity={touch ? 1.9 : 1.4} />
-        {!touch && <hemisphereLight args={['#fffaf0', '#cfc6b4', 0.7]} />}
+        <ambientLight intensity={lights.ambient} />
+        <hemisphereLight args={['#fffaf0', '#cfc6b4', lights.hemisphere]} />
         <directionalLight
           position={[2.6, 4.2, 3.2]}
-          intensity={1.9}
+          intensity={lights.key}
           castShadow
-          shadow-mapSize={touch ? [512, 512] : [2048, 2048]}
+          shadow-mapSize={touch ? [1024, 1024] : [2048, 2048]}
           shadow-bias={-0.0004}
           shadow-normalBias={0.015}
           // Softens the shadow edge under PCF. Deliberately not drei's
@@ -115,7 +114,7 @@ export default function Scene({
         >
           <orthographicCamera attach="shadow-camera" args={[-3.5, 3.5, 3.5, -3.5, 0.1, 14]} />
         </directionalLight>
-        {!touch && <directionalLight position={[-3.4, 2.2, -1.6]} intensity={0.5} />}
+        <directionalLight position={[-3.4, 2.2, -1.6]} intensity={lights.fill} />
 
         <Suspense fallback={null}>
           <Room />

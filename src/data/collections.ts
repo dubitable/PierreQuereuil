@@ -25,7 +25,7 @@ export const records: Entry[] = [
   { title: "Two Months Off", by: "Underworld" },
   { title: "Le Sens", by: "Dominique A" },
   { title: "Le Bien, Le Mal", by: "Guru" },
-  { title: "Five Years", by: "David Bowie" },
+  { title: "Five Years (2012 Remaster)", by: "David Bowie" },
   { title: "Fearless", by: "Pink Floyd" }
 ]
 

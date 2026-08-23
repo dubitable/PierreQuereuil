@@ -23,7 +23,8 @@ import {
   Turntable,
 } from './Pieces'
 import { ScreenLinks } from './ScreenLinks'
-import { palette } from './palette'
+import { lighting, night, palette } from './palette'
+import { toggleTheme, useTheme } from './theme'
 import { Prop, TOP } from './useProp'
 import { Station } from './Station'
 
@@ -498,16 +499,78 @@ function Desk() {
   )
 }
 
+/**
+ * Measured off the GLB: the shade spans y 0.682 to 0.860 and sits on the
+ * lamp's own axis once `Prop` has recentred it, so the bulb belongs here.
+ */
+const BULB: [number, number, number] = [0, 0.771, 0]
+
+/** The floor lamp, which is also the switch for the whole room. */
+function Lamp() {
+  const theme = useTheme()
+  const dark = theme === 'night'
+
+  return (
+    <group
+      // Behind the desk rather than out at the room's right edge, where it
+      // sat outside every framed view: the wide shot cropped it at x +/-2 and
+      // the camera's parallax swung it in and out, and on touch there is no
+      // wide shot at all. Here it stands inside the desk station — the one the
+      // room opens on — clear of the desk's own back edge at z -0.278, with
+      // the shade rising above the monitor.
+      position={[0.45, 0, -0.62]}
+      rotation={[0, -0.5, 0]}
+      // Keeps the top of the shade inside the desk frame, which ends at y 0.81
+      // on a 16:9 screen. Scales the bulb along with it.
+      scale={0.92}
+      onPointerOver={(event) => {
+        event.stopPropagation()
+        document.body.style.cursor = 'pointer'
+      }}
+      onPointerOut={() => {
+        document.body.style.cursor = 'auto'
+      }}
+      onClick={(event) => {
+        event.stopPropagation()
+        document.body.style.cursor = 'auto'
+        toggleTheme()
+      }}
+    >
+      <Prop
+        file="lampRoundFloor"
+        materials={dark ? { lamp: { color: '#fff3d0', glow: 1.9 } } : undefined}
+      />
+      {/* Not a shadow caster: a point light costs six shadow renders, and the
+          room already has a key light doing that job. */}
+      {dark && (
+        <pointLight
+          position={BULB}
+          intensity={lighting.night.lamp}
+          distance={5}
+          decay={2}
+          color="#ffd8a0"
+        />
+      )}
+    </group>
+  )
+}
+
 export function Room() {
+  const theme = useTheme()
+
   return (
     <>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.001, 0]} receiveShadow>
         <planeGeometry args={[80, 80]} />
-        <meshStandardMaterial color={palette.floor} roughness={1} metalness={0} />
+        <meshStandardMaterial
+          color={theme === 'night' ? night.floor : palette.floor}
+          roughness={1}
+          metalness={0}
+        />
       </mesh>
 
       <Prop file="rugRound" position={[0.1, 0, 0.36]} scale={1.7} />
-      <Prop file="lampRoundFloor" position={[1.98, 0, -0.2]} rotation={[0, -0.5, 0]} />
+      <Lamp />
 
       <Bookcase />
       <RecordPlayer />
