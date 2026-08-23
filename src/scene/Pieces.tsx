@@ -2,6 +2,7 @@ import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { palette, spineColor } from './palette'
+import { cover } from './filmArt'
 import type { Entry } from '../data/collections'
 
 /** Deterministic jitter so the room looks hand-arranged but never reshuffles. */
@@ -152,30 +153,194 @@ export function Sleeve({
   )
 }
 
-/** A DVD case standing in the cabinet. */
+/** Case dimensions: a DVD keep case, cover-out. */
+export const CASE = { width: 0.09, height: 0.105, depth: 0.014 }
+const CASE_ASPECT = CASE.width / CASE.height
+
+/**
+ * A DVD case, cover-out. Same deal as `Sleeve`: it eases toward whatever the
+ * shelf hands it, so one component covers sitting in the stack, fanning out
+ * when the station is focused, and standing out front while its film is up on
+ * the television.
+ */
 export function Case({
   entry,
   index,
+  texture,
   position,
+  rotation,
+  scale = 1,
+  interactive,
+  reach,
+  onHover,
+  onSelect,
 }: {
   entry: Entry
   index: number
-  /** Position is the shelf the case stands on, not the case's centre. */
+  texture: THREE.Texture | null
+  /** The case's centre, not the surface it stands on. */
   position: [number, number, number]
+  rotation: [number, number, number]
+  scale?: number
+  interactive: boolean
+  /** The strip of this case left visible by the one in front. See `Sleeve`. */
+  reach?: { width: number; center: number }
+  onHover?: (hovered: boolean) => void
+  onSelect: () => void
 }) {
+  const group = useRef<THREE.Group>(null)
+  const front = useRef<THREE.MeshStandardMaterial>(null)
+  const [hovered, setHovered] = useState(false)
+
+  // Posters land long after the material compiled, and three will not sample a
+  // map that appeared afterwards until the material is flagged for recompile.
+  useLayoutEffect(() => {
+    cover(texture, CASE_ASPECT)
+    if (front.current) front.current.needsUpdate = true
+  }, [texture])
+
+  useFrame((_, delta) => {
+    const node = group.current
+    if (!node) return
+    const k = approach(9, Math.min(delta, 1 / 30))
+    const raised = hovered && interactive
+    scratch.set(
+      position[0],
+      position[1] + (raised ? 0.012 : 0),
+      position[2] + (raised ? 0.014 : 0),
+    )
+    node.position.lerp(scratch, k)
+    node.rotation.x += (rotation[0] - node.rotation.x) * k
+    node.rotation.y += (rotation[1] - node.rotation.y) * k
+    node.rotation.z += (rotation[2] - node.rotation.z) * k
+    const s = node.scale.x + (scale - node.scale.x) * k
+    node.scale.setScalar(s)
+  })
+
+  const hover = (value: boolean) => {
+    setHovered(value)
+    if (interactive) document.body.style.cursor = value ? 'pointer' : 'auto'
+    onHover?.(value)
+  }
+
+  const flat = entry.color ?? spineColor(index + 4)
+  const faces = [0, 1, 2, 3, 4, 5]
+
   return (
-    <mesh
-      position={[position[0], position[1] + 0.0525, position[2]]}
-      castShadow
-      receiveShadow
+    <group
+      ref={group}
+      onPointerOver={(event) => {
+        if (!interactive) return
+        event.stopPropagation()
+        hover(true)
+      }}
+      onPointerOut={() => hover(false)}
+      onClick={(event) => {
+        if (!interactive) return
+        event.stopPropagation()
+        hover(false)
+        onSelect()
+      }}
     >
-      <boxGeometry args={[0.014, 0.105, 0.09]} />
-      <meshStandardMaterial
-        color={entry.color ?? spineColor(index + 4)}
-        roughness={0.9}
-        metalness={0}
-      />
-    </mesh>
+      {/* Pointer target. The raycaster skips invisible meshes, so this is a
+          zero-opacity material rather than `visible={false}`. */}
+      <mesh position={[reach ? reach.center : 0, 0, 0.012]}>
+        <boxGeometry
+          args={[reach ? reach.width : CASE.width, CASE.height + 0.02, 0.03]}
+        />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+      </mesh>
+
+      <mesh castShadow receiveShadow>
+        <boxGeometry args={[CASE.width, CASE.height, CASE.depth]} />
+        {faces.map((face) => (
+          <meshStandardMaterial
+            key={face}
+            ref={face === 4 ? front : undefined}
+            attach={`material-${face}`}
+            color={face === 4 && texture ? '#ffffff' : flat}
+            map={face === 4 ? texture : null}
+            roughness={0.9}
+            metalness={0}
+          />
+        ))}
+      </mesh>
+    </group>
+  )
+}
+
+/**
+ * The vintage television's picture, measured off the GLB rather than guessed:
+ * the recessed screen sits at model z -0.020 spanning x[0.035..0.267] and
+ * y[0.034..0.236]. `Prop` recentres the model by x -0.205 and z +0.135, which
+ * puts the picture's centre at the offset below. The plane is a shade smaller
+ * than the recess so the bezel still frames it and nothing z-fights.
+ */
+const SCREEN = {
+  width: 0.222,
+  height: 0.192,
+  offset: [-0.054, 0.135, 0.116] as [number, number, number],
+}
+const SCREEN_ASPECT = SCREEN.width / SCREEN.height
+/** The tube when it is off, and the light it comes up to when it is on. */
+const SCREEN_OFF = new THREE.Color('#33383a')
+const SCREEN_ON = new THREE.Color('#d9e6e1')
+const glow = new THREE.Color()
+
+/**
+ * The television, switching on. There is no trailer playback anywhere in this:
+ * no provider serves direct trailer files, TMDB hands back YouTube keys, and a
+ * cross-origin iframe cannot become a WebGL texture. So it shows a still — and
+ * with no still to show it simply lights up, which is the no-API-key case.
+ */
+export function TelevisionScreen({
+  position,
+  rotation,
+  still,
+  active,
+}: {
+  /** The television's own placement; the screen rides along inside it. */
+  position: [number, number, number]
+  rotation: [number, number, number]
+  still: THREE.Texture | null
+  active: boolean
+}) {
+  const tube = useRef<THREE.MeshBasicMaterial>(null)
+  const picture = useRef<THREE.MeshBasicMaterial>(null)
+  const cue = useRef(0)
+
+  useLayoutEffect(() => {
+    cover(still, SCREEN_ASPECT)
+    if (picture.current) picture.current.needsUpdate = true
+  }, [still])
+
+  useFrame((_, delta) => {
+    const dt = Math.min(delta, 1 / 30)
+    cue.current = THREE.MathUtils.lerp(cue.current, active ? 1 : 0, approach(4, dt))
+    const c = cue.current
+    if (tube.current) tube.current.color.copy(glow.copy(SCREEN_OFF).lerp(SCREEN_ON, c))
+    if (picture.current) picture.current.opacity = still ? c : 0
+  })
+
+  return (
+    <group position={position} rotation={rotation}>
+      <mesh position={SCREEN.offset}>
+        <planeGeometry args={[SCREEN.width, SCREEN.height]} />
+        <meshBasicMaterial ref={tube} color={SCREEN_OFF} toneMapped={false} />
+      </mesh>
+      <mesh
+        position={[SCREEN.offset[0], SCREEN.offset[1], SCREEN.offset[2] + 0.0006]}
+      >
+        <planeGeometry args={[SCREEN.width, SCREEN.height]} />
+        <meshBasicMaterial
+          ref={picture}
+          map={still}
+          transparent
+          opacity={0}
+          toneMapped={false}
+        />
+      </mesh>
+    </group>
   )
 }
 

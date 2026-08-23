@@ -2,11 +2,13 @@ import { Suspense, useEffect, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { Preload } from '@react-three/drei'
 import { setFocus } from '../scene/focus'
+import { setFilms } from '../scene/filmArt'
+import type { Film } from '../data/tmdb'
 import { palette } from '../scene/palette'
 import { Room } from '../scene/Room'
 import { CameraRig } from '../scene/CameraRig'
 import { Loader } from './Loader'
-import { NowPlaying } from './NowPlaying'
+import { Credit } from './Credit'
 import { StationDots } from './StationDots'
 import { useIsTouch } from '../scene/useIsTouch'
 
@@ -25,8 +27,15 @@ function Ready({ onReady }: { onReady: () => void }) {
   return null
 }
 
-export default function Scene() {
+/**
+ * `films` is resolved against TMDB at build time and handed in as a prop, so the
+ * API key stays on the server and the room makes no film requests of its own.
+ */
+export default function Scene({ films = [] }: { films?: (Film | null)[] }) {
   const touch = useIsTouch()
+  // Before first paint, so the cabinet never renders a frame of blank cases
+  // when the data was there all along.
+  useState(() => setFilms(films))
   const [loaded, setLoaded] = useState(false)
   const [waited, setWaited] = useState(false)
   const [timedOut, setTimedOut] = useState(false)
@@ -93,7 +102,7 @@ export default function Scene() {
       </Canvas>
 
       <Loader done={revealed} />
-      <NowPlaying />
+      <Credit />
       {touch && <StationDots />}
     </>
   )

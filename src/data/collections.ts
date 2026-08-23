@@ -32,10 +32,9 @@ export const records: Entry[] = [
 ]
 
 export const films: Entry[] = [
-  { title: 'Chungking Express', by: 'Wong Kar-wai' },
-  { title: 'Perfect Days', by: 'Wim Wenders' },
-  { title: 'Paprika', by: 'Satoshi Kon' },
+  { title: 'Playtime', by: 'Jacques Tati' },
+  { title: 'The Ascent', by: 'Larisa Shepitkov' },
   { title: 'La Haine', by: 'Mathieu Kassovitz' },
-  { title: 'Arrival', by: 'Denis Villeneuve' },
-  { title: 'Burning', by: 'Lee Chang-dong' },
+  { title: 'Inland Empire', by: 'David Lynch' },
+  { title: 'Solaris', by: 'Andrei Tarkovsky' },
 ]
