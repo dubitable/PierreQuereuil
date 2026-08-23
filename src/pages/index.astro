@@ -1,11 +1,47 @@
 ---
-import Welcome from '../components/Welcome.astro';
-import Layout from '../layouts/Layout.astro';
+import Layout from '../layouts/Layout.astro'
+import Scene from '../components/Scene.tsx'
+import { site } from '../data/site'
+import { books, films, records } from '../data/collections'
 
-// Welcome to Astro! Wondering what to do next? Check out the Astro documentation at https://docs.astro.build
-// Don't want to use any of this? Delete everything in this file, the `assets`, `components`, and `layouts` directories, and start fresh.
+const shelves = [
+	{ heading: 'Reading', items: books },
+	{ heading: 'Listening', items: records },
+	{ heading: 'Watching', items: films },
+]
 ---
 
 <Layout>
-	<Welcome />
+	<header class="masthead">
+		<h1>{site.name}</h1>
+		<p>{site.tagline}</p>
+	</header>
+
+	<div id="scene">
+		<Scene client:only="react" />
+	</div>
+
+	<!--
+		The room is the interface, but everything in it is real content. This
+		mirror keeps the page meaningful to search engines, screen readers, and
+		anyone without WebGL.
+	-->
+	<section class="sr-only" aria-label="Site contents">
+		<h2>Links</h2>
+		<ul>
+			{site.links.map((link) => <li><a href={link.href}>{link.label}</a></li>)}
+		</ul>
+		{
+			shelves.map((shelf) => (
+				<>
+					<h2>{shelf.heading}</h2>
+					<ul>
+						{shelf.items.map((item) => (
+							<li>{item.title} — {item.by}</li>
+						))}
+					</ul>
+				</>
+			))
+		}
+	</section>
 </Layout>

@@ -1,0 +1,220 @@
+/* woff v1, not woff2: troika (which renders the in-scene text) cannot parse
+   woff2, and a font it cannot parse suspends the whole 3D scene forever. One
+   format for both the page and the canvas keeps that from drifting apart. */
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/inter-400.woff') format('woff');
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/inter-600.woff') format('woff');
+  font-weight: 600;
+  font-display: swap;
+}
+
+:root {
+  --bg: #f4f1ea;
+  --ink: #3d3833;
+  --ink-soft: #8a8378;
+  --accent: #b26a4f;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+#scene {
+  position: fixed;
+  inset: 0;
+  /* dvh so the mobile URL bar collapsing does not resize the scene. */
+  height: 100dvh;
+  touch-action: none;
+}
+
+.masthead {
+  position: fixed;
+  top: clamp(1.5rem, 4vw, 2.75rem);
+  left: clamp(1.5rem, 4vw, 2.75rem);
+  z-index: 1;
+  pointer-events: none;
+}
+
+.masthead h1 {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.masthead p {
+  margin: 0.5rem 0 0;
+  max-width: 22ch;
+  font-size: 0.8rem;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+
+/* Real content for search engines, screen readers, and no-JS visitors. */
+.sr-only:not(:focus-within) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.sr-only a {
+  color: var(--accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Loading hairline. Deliberately wordless — the room explains itself once
+   it arrives, and a percentage would be more chrome than the wait deserves. */
+.loader {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 500ms ease;
+}
+
+.loader[data-done] {
+  opacity: 0;
+}
+
+.loader__track {
+  width: 88px;
+  height: 2px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--ink-soft) 22%, transparent);
+}
+
+.loader__fill {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--ink-soft);
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 320ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loader__fill {
+    transition: none;
+  }
+}
+
+/* Preview credit, bottom right. Present only while something is playing. */
+.credit {
+  position: fixed;
+  right: clamp(1.5rem, 4vw, 2.75rem);
+  bottom: clamp(1.5rem, 4vw, 2.75rem);
+  z-index: 1;
+  text-align: right;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(4px);
+  transition: opacity 420ms ease, transform 420ms ease;
+}
+
+.credit[data-visible] {
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
+}
+
+.credit__link {
+  display: grid;
+  gap: 0.15rem;
+  color: inherit;
+  text-decoration: none;
+}
+
+.credit__track {
+  display: block;
+  max-width: 26ch;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: var(--ink);
+}
+
+.credit__artist {
+  display: block;
+  max-width: 26ch;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: var(--ink-soft);
+}
+
+.credit__source {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.credit__link:hover .credit__source {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* Which station you are on, and a way to reach the others. Touch only. */
+.dots {
+  position: fixed;
+  bottom: calc(clamp(1.5rem, 4vw, 2.75rem) + env(safe-area-inset-bottom, 0px));
+  left: 50%;
+  z-index: 2;
+  display: flex;
+  gap: 0.6rem;
+  transform: translateX(-50%);
+}
+
+.dots__dot {
+  width: 7px;
+  height: 7px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--ink-soft) 35%, transparent);
+  transition: background 260ms ease, transform 260ms ease;
+  /* Small on screen, but a comfortable target around it. */
+  box-shadow: 0 0 0 10px transparent;
+  cursor: pointer;
+}
+
+.dots__dot[data-active] {
+  background: var(--ink);
+  transform: scale(1.25);
+}

@@ -1,21 +1,37 @@
+---
+import '../styles/global.css'
+import { site } from '../data/site'
+
+interface Props {
+	title?: string
+	description?: string
+}
+
+const { title = site.name, description = site.tagline } = Astro.props
+---
+
 <!doctype html>
 <html lang="en">
 	<head>
 		<meta charset="utf-8" />
-		<meta name="viewport" content="width=device-width" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<meta name="generator" content={Astro.generator} />
-		<title>Pierre Quereuil</title>
+		<meta name="description" content={description} />
+		<meta name="theme-color" content="#f4f1ea" />
+		<meta property="og:title" content={title} />
+		<meta property="og:description" content={description} />
+		<meta property="og:type" content="website" />
+		<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+		<link
+			rel="preload"
+			href="/fonts/inter-400.woff"
+			as="font"
+			type="font/woff"
+			crossorigin
+		/>
+		<title>{title}</title>
 	</head>
 	<body>
 		<slot />
 	</body>
 </html>
-
-<style>
-	html,
-	body {
-		margin: 0;
-		width: 100%;
-		height: 100%;
-	}
-</style>
