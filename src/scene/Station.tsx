@@ -25,15 +25,20 @@ export function Station({
   const interactive = focus === null || focus === station.id
   const lifted = hovered && focus === null
 
-  useFrame((_, delta) => {
+  useFrame((state, delta) => {
     const node = inner.current
     if (!node) return
     const dt = Math.min(delta, 1 / 30)
-    node.position.y = THREE.MathUtils.lerp(
-      node.position.y,
-      lifted ? 0.028 : 0,
-      1 - Math.exp(-9 * dt),
-    )
+    const goal = lifted ? 0.028 : 0
+    const next = THREE.MathUtils.lerp(node.position.y, goal, 1 - Math.exp(-9 * dt))
+    // Snap and stop asking once it has effectively arrived; under
+    // `frameloop="demand"` an approach that never lands never stops drawing.
+    if (Math.abs(goal - next) < 0.0005) {
+      node.position.y = goal
+      return
+    }
+    node.position.y = next
+    state.invalidate()
   })
 
   useEffect(() => {

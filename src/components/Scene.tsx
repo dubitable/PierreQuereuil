@@ -10,6 +10,7 @@ import { palette } from '../scene/palette'
 import { Room } from '../scene/Room'
 import { CameraRig } from '../scene/CameraRig'
 import { Loader } from './Loader'
+import { Stats, StatsPanel, wantsStats } from './Stats'
 import { Credit } from './Credit'
 import { StationDots } from './StationDots'
 import { useIsTouch } from '../scene/useIsTouch'
@@ -42,6 +43,8 @@ export default function Scene({
   books?: (Book | null)[]
 }) {
   const touch = useIsTouch()
+  const [sample, setSample] = useState<Parameters<typeof StatsPanel>[0]['sample']>(null)
+  const [stats] = useState(wantsStats)
   // Before first paint, so neither shelf renders a frame of blank covers when
   // the data was there all along.
   useState(() => {
@@ -68,11 +71,19 @@ export default function Scene({
       <Canvas
         // `flat` keeps tone mapping off, so the palette renders as authored.
         flat
-        shadows="percentage"
+        // Nothing in this room animates on its own — the camera's idle sway is
+        // pointer parallax, which touch never fires — so a still room should
+        // cost nothing. Every easing `useFrame` asks for its own next frame
+        // while it is still moving and stops when it settles.
+        frameloop="demand"
+        // PCF's extra taps are per-fragment work a 5" screen will not show.
+        shadows={touch ? 'basic' : 'percentage'}
         // Phone GPUs do not need a 2x buffer under 2048px shadows.
-        dpr={touch ? [1, 1.5] : [1, 2]}
+        dpr={touch ? [1, 1.25] : [1, 2]}
         camera={{ fov: 32, position: [0, 1.2, 3.5], near: 0.1, far: 60 }}
-        gl={{ antialias: true }}
+        // Multisampling is the single most expensive thing a phone can be
+        // asked for here, and the room is flat colour on flat colour.
+        gl={{ antialias: !touch, powerPreference: 'high-performance' }}
         // On touch there is no wide view to return to: the carousel always
         // rests on a station.
         onPointerMissed={touch ? undefined : () => setFocus(null)}
@@ -85,13 +96,15 @@ export default function Scene({
         {/* Fades the floor into the background so its edge never reads as a horizon. */}
         <fog attach="fog" args={[palette.background, 7, 16]} />
 
-        <ambientLight intensity={1.4} />
-        <hemisphereLight args={['#fffaf0', '#cfc6b4', 0.7]} />
+        {/* Four lights is four sets of per-fragment maths. Phones get the key
+            light and ambient only, lifted to stand in for the two that go. */}
+        <ambientLight intensity={touch ? 1.9 : 1.4} />
+        {!touch && <hemisphereLight args={['#fffaf0', '#cfc6b4', 0.7]} />}
         <directionalLight
           position={[2.6, 4.2, 3.2]}
           intensity={1.9}
           castShadow
-          shadow-mapSize={touch ? [1024, 1024] : [2048, 2048]}
+          shadow-mapSize={touch ? [512, 512] : [2048, 2048]}
           shadow-bias={-0.0004}
           shadow-normalBias={0.015}
           // Softens the shadow edge under PCF. Deliberately not drei's
@@ -102,7 +115,7 @@ export default function Scene({
         >
           <orthographicCamera attach="shadow-camera" args={[-3.5, 3.5, 3.5, -3.5, 0.1, 14]} />
         </directionalLight>
-        <directionalLight position={[-3.4, 2.2, -1.6]} intensity={0.5} />
+        {!touch && <directionalLight position={[-3.4, 2.2, -1.6]} intensity={0.5} />}
 
         <Suspense fallback={null}>
           <Room />
@@ -110,10 +123,13 @@ export default function Scene({
           <Ready onReady={() => setLoaded(true)} />
         </Suspense>
 
+        {stats && <Stats onSample={setSample} />}
+
         <CameraRig touch={touch} />
       </Canvas>
 
       <Loader done={revealed} />
+      {stats && <StatsPanel sample={sample} />}
       <Credit />
       {touch && <StationDots />}
     </>

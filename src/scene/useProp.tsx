@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
-import { useGLTF } from '@react-three/drei'
+import { useLoader } from '@react-three/fiber'
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import type { ThreeElements } from '@react-three/fiber'
 import * as THREE from 'three'
 import { KENNEY_MATERIALS } from './palette'
@@ -37,7 +38,11 @@ function themedMaterial(source: THREE.Material, overrides?: MaterialOverrides): 
 
 /** Loads a Kenney `.glb`, recolours it, and returns a clonable object3D. */
 export function useProp(file: string, overrides?: MaterialOverrides) {
-  const { scene } = useGLTF(`/models/${file}.glb`, false, false)
+  // three's own loader rather than drei's `useGLTF`: that one statically
+  // imports DRACOLoader, KTX2Loader and MeshoptDecoder, all of which ended up
+  // in the bundle even though we pass `false, false` to switch them off. These
+  // models are plain, uncompressed glTF.
+  const { scene } = useLoader(GLTFLoader, `/models/${file}.glb`)
   const key = overrides ? JSON.stringify(overrides) : ''
   return useMemo(() => {
     const root = scene.clone(true)
@@ -106,4 +111,4 @@ export const PROPS = [
   'books',
 ] as const
 
-PROPS.forEach((file) => useGLTF.preload(`/models/${file}.glb`, false, false))
+PROPS.forEach((file) => useLoader.preload(GLTFLoader, `/models/${file}.glb`))

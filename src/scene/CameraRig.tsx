@@ -25,9 +25,22 @@ const SWIPE_MIN = 44
 const prefersReducedMotion = () =>
   typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 
-/** Frame-rate independent approach; higher lambda snaps faster. */
+/** Distance at which the camera counts as parked. */
+const SETTLED = 0.0004
+
+/**
+ * Frame-rate independent approach; higher lambda snaps faster. Reports whether
+ * it is still travelling, so the demand loop knows to ask for another frame —
+ * a lerp closes on its goal without ever arriving, and would otherwise keep
+ * the renderer awake for good.
+ */
 function damp(current: THREE.Vector3, goal: THREE.Vector3, lambda: number, dt: number) {
+  if (current.distanceToSquared(goal) < SETTLED * SETTLED) {
+    current.copy(goal)
+    return false
+  }
   current.lerp(goal, 1 - Math.exp(-lambda * dt))
+  return true
 }
 
 export function CameraRig({ touch }: { touch: boolean }) {
@@ -107,7 +120,7 @@ export function CameraRig({ touch }: { touch: boolean }) {
     }
   }, [touch])
 
-  useFrame((_, delta) => {
+  useFrame((state, delta) => {
     const dt = Math.min(delta, 1 / 30)
     const aspect = size.width / size.height
 
@@ -132,9 +145,10 @@ export function CameraRig({ touch }: { touch: boolean }) {
     }
 
     const lambda = focus ? 3.2 : 2.2
-    damp(camera.position, goalPosition.current, lambda, dt)
-    damp(target.current, goalTarget.current, lambda, dt)
+    const flying = damp(camera.position, goalPosition.current, lambda, dt)
+    const turning = damp(target.current, goalTarget.current, lambda, dt)
     camera.lookAt(target.current)
+    if (flying || turning || opening.current > 0) state.invalidate()
   })
 
   return null

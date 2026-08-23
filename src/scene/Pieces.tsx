@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { useFrame, type ThreeElements, type ThreeEvent } from '@react-three/fiber'
+import { useFrame, useThree, type ThreeElements, type ThreeEvent } from '@react-three/fiber'
 import * as THREE from 'three'
 import { palette, spineColor } from './palette'
 import { cover } from './art'
@@ -8,6 +8,21 @@ import type { Entry } from '../data/collections'
 
 /** Frame-rate independent approach toward a target. */
 const approach = (lambda: number, dt: number) => 1 - Math.exp(-lambda * dt)
+
+/**
+ * How close counts as arrived. Easing approaches its goal without ever
+ * reaching it, and under `frameloop="demand"` that would mean asking for
+ * another frame forever, so every animation snaps once it is this close.
+ */
+const SETTLED = 0.0005
+
+/** Eases a number toward a goal, returning whether it is still on its way. */
+function ease(current: number, goal: number, k: number) {
+  const next = current + (goal - current) * k
+  return Math.abs(goal - next) < SETTLED
+    ? { value: goal, moving: false }
+    : { value: next, moving: true }
+}
 
 export type Size = [number, number, number]
 
@@ -73,7 +88,7 @@ export function Cover({
     if (front.current) front.current.needsUpdate = true
   }, [texture, width, height])
 
-  useFrame((_, delta) => {
+  useFrame((state, delta) => {
     const node = group.current
     if (!node) return
     const k = approach(9, Math.min(delta, 1 / 30))
@@ -84,11 +99,22 @@ export function Cover({
       position[1] + (raised ? lift.y : 0),
       position[2] + (raised ? lift.z : 0),
     )
-    node.position.lerp(scratch, k)
-    node.rotation.x += (rotation[0] - node.rotation.x) * k
-    node.rotation.y += (rotation[1] - node.rotation.y) * k
-    node.rotation.z += (rotation[2] - node.rotation.z) * k
-    node.scale.setScalar(node.scale.x + (scale - node.scale.x) * k)
+
+    let moving = node.position.distanceToSquared(scratch) > SETTLED * SETTLED
+    if (moving) node.position.lerp(scratch, k)
+    else node.position.copy(scratch)
+
+    for (const axis of ['x', 'y', 'z'] as const) {
+      const turn = ease(node.rotation[axis], rotation[axis === 'x' ? 0 : axis === 'y' ? 1 : 2], k)
+      node.rotation[axis] = turn.value
+      moving = moving || turn.moving
+    }
+
+    const sized = ease(node.scale.x, scale, k)
+    node.scale.setScalar(sized.value)
+    moving = moving || sized.moving
+
+    if (moving) state.invalidate()
   })
 
   const hover = (value: boolean) => {
@@ -98,8 +124,6 @@ export function Cover({
   }
 
   const flat = entry.color ?? spineColor(index + 2)
-  // Only the front face carries artwork; the edges stay paper.
-  const faces = [0, 1, 2, 3, 4, 5]
 
   return (
     <group
@@ -117,26 +141,36 @@ export function Cover({
         onSelect()
       }}
     >
-      {/* Pointer target. The raycaster skips invisible meshes, hence a
-          zero-opacity material rather than `visible={false}`. */}
-      <mesh position={[reach ? reach.center : 0, 0, depth]}>
-        <boxGeometry args={[reach ? reach.width : width, height + 0.03, 0.03]} />
-        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+      {/* Pointer target, and only while the station is focused — nothing else
+          can be clicked, and this is a real draw call the rest of the time.
+          The raycaster skips invisible meshes, hence a zero-opacity material
+          rather than `visible={false}`. */}
+      {interactive && (
+        <mesh position={[reach ? reach.center : 0, 0, depth]}>
+          <boxGeometry args={[reach ? reach.width : width, height + 0.03, 0.03]} />
+          <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+        </mesh>
+      )}
+
+      {/* The object itself carries one material rather than one per face. A
+          six-material box is six draw calls, and these are the most numerous
+          things in the room. Artwork rides on its own plane instead.
+          Casting is off: a card this thin contributes almost no shadow, and
+          sixteen of them dominated the shadow pass. */}
+      <mesh receiveShadow>
+        <boxGeometry args={size} />
+        <meshStandardMaterial color={flat} roughness={0.93} metalness={0} />
       </mesh>
 
-      <mesh castShadow receiveShadow>
-        <boxGeometry args={size} />
-        {faces.map((face) => (
-          <meshStandardMaterial
-            key={face}
-            ref={face === 4 ? front : undefined}
-            attach={`material-${face}`}
-            color={face === 4 && texture ? '#ffffff' : flat}
-            map={face === 4 ? texture : null}
-            roughness={0.93}
-            metalness={0}
-          />
-        ))}
+      <mesh position={[0, 0, depth / 2 + 0.0004]}>
+        <planeGeometry args={[width, height]} />
+        <meshStandardMaterial
+          ref={front}
+          color={texture ? '#ffffff' : flat}
+          map={texture}
+          roughness={0.93}
+          metalness={0}
+        />
       </mesh>
     </group>
   )
@@ -191,12 +225,14 @@ export function TelevisionScreen({
     if (picture.current) picture.current.needsUpdate = true
   }, [still])
 
-  useFrame((_, delta) => {
+  useFrame((state, delta) => {
     const dt = Math.min(delta, 1 / 30)
-    cue.current = THREE.MathUtils.lerp(cue.current, active ? 1 : 0, approach(4, dt))
+    const lit = ease(cue.current, active ? 1 : 0, approach(4, dt))
+    cue.current = lit.value
     const c = cue.current
     if (tube.current) tube.current.color.copy(glow.copy(SCREEN_OFF).lerp(SCREEN_ON, c))
     if (picture.current) picture.current.opacity = still ? c : 0
+    if (lit.moving) state.invalidate()
   })
 
   return (
@@ -250,10 +286,14 @@ export function Turntable({
     if (label.current) label.current.needsUpdate = true
   }, [artwork])
 
-  useFrame((_, delta) => {
+  useFrame((state, delta) => {
     const dt = Math.min(delta, 1 / 30)
-    cue.current = THREE.MathUtils.lerp(cue.current, active ? 1 : 0, approach(5, dt))
+    const cued = ease(cue.current, active ? 1 : 0, approach(5, dt))
+    cue.current = cued.value
     const c = cue.current
+    // Unlike everything else here the record does not settle: it turns for as
+    // long as the clip plays, so it has to keep asking for frames.
+    if (cued.moving || active) state.invalidate()
 
     if (disc.current) {
       disc.current.visible = c > 0.02
@@ -369,6 +409,9 @@ export function Swivel({
   capture?: boolean
 } & ThreeElements['group']) {
   const spin = useRef<THREE.Group>(null)
+  // A drag writes straight to the group, outside any frame loop, so it has to
+  // ask for the redraw itself.
+  const invalidate = useThree((state) => state.invalidate)
   const velocity = useRef(0)
   const moved = useRef(0)
   const flick = useRef<{ speed: number; time: number } | null>(null)
@@ -377,13 +420,15 @@ export function Swivel({
   // A drag that outlives its component would leave listeners on the window.
   useEffect(() => () => release.current?.(), [])
 
-  useFrame((_, delta) => {
+  useFrame((state, delta) => {
     const node = spin.current
     if (!node || velocity.current === 0) return
     const dt = Math.min(delta, 1 / 30)
     node.rotation.y += velocity.current * dt
     velocity.current *= Math.exp(-SPIN_DRAG * dt)
     if (Math.abs(velocity.current) < SPIN_STOP) velocity.current = 0
+    // Coasting down; the drag itself invalidates through its own handler.
+    if (velocity.current !== 0) state.invalidate()
   })
 
   const grab = (event: ThreeEvent<PointerEvent>) => {
@@ -416,6 +461,7 @@ export function Swivel({
       last = { x: native.clientX, time: now }
       moved.current += Math.abs(dx)
       node.rotation.y += dx * DRAG_TURN
+      invalidate()
       const instant = (dx * DRAG_TURN) / dt
       // Smoothed, so one stuttered frame at the end does not decide the flick.
       flick.current = {
