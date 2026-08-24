@@ -116,10 +116,11 @@ async function pickCover(workKey: string, title: string): Promise<number | null>
   )
   if (!usable.length) return null
 
-  const newest = usable.reduce((best, edition) =>
-    editionYear(edition) > editionYear(best) ? edition : best,
-  )
-  return newest.covers![0]!
+  // const newest = usable.reduce((best, edition) =>
+  //   editionYear(edition) > editionYear(best) ? edition : best,
+  // )
+
+  return usable![0].covers![0]!
 }
 
 async function lookupBook(entry: Entry): Promise<Book | null> {

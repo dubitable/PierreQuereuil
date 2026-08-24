@@ -24,6 +24,8 @@ import {
   Turntable,
 } from './Pieces'
 import { Cat } from './Cat'
+import { TrophyCase } from './TrophyCase'
+import { mark, markNight, spin } from './trophies'
 import { ScreenLinks } from './ScreenLinks'
 import { lighting, night, palette } from './palette'
 import { toggleTheme, useTheme } from './theme'
@@ -212,7 +214,10 @@ function Bookcase() {
               if (isHovered) setHovered(credit)
               else clearHovered(credit)
             }}
-            onSelect={() => setPicked(isPicked ? null : index)}
+            onSelect={() => {
+              mark('books', index)
+              setPicked(isPicked ? null : index)
+            }}
           />
         )
       })}
@@ -323,7 +328,10 @@ function RecordPlayer() {
               if (isHovered) setHovered(credit)
               else clearHovered(credit)
             }}
-            onSelect={() => setPicked(isPlaying ? null : index)}
+            onSelect={() => {
+              mark('records', index)
+              setPicked(isPlaying ? null : index)
+            }}
           />
         )
       })}
@@ -464,7 +472,10 @@ function Films() {
               if (isHovered) setHovered(credit)
               else clearHovered(credit)
             }}
-            onSelect={() => setPicked(picked === index ? null : index)}
+            onSelect={() => {
+              mark('films', index)
+              setPicked(picked === index ? null : index)
+            }}
           />
         )
       })}
@@ -497,7 +508,12 @@ function Desk() {
       <Prop file="computerMouse" position={[0.21, TOP.desk, 0.075]} rotation={[0, -0.15, 0]} />
       {/* The model's own swivel column lands within 3mm of where `Prop`
           centres it, so the group's Y axis is already the right pivot. */}
-      <Swivel position={[0.4, 0, 0.55]} rotation={[0, Math.PI * 0.82, 0]} capture={focused}>
+      <Swivel
+        position={[0.4, 0, 0.55]}
+        rotation={[0, Math.PI * 0.82, 0]}
+        capture={focused}
+        onSpin={spin}
+      >
         <Prop
           file="chairDesk"
           scale={0.95}
@@ -542,6 +558,8 @@ function Lamp() {
       onClick={(event) => {
         event.stopPropagation()
         document.body.style.cursor = 'auto'
+        // Before the toggle, while `dark` still describes the room we are in.
+        if (!dark) markNight()
         toggleTheme()
       }}
     >
@@ -588,6 +606,7 @@ export function Room() {
       </Suspense>
 
       <Bookcase />
+      <TrophyCase />
       <RecordPlayer />
       <Desk />
       <Films />
