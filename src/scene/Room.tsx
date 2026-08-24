@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { books, films, records } from '../data/collections'
 import { site } from '../data/site'
 import { prefetchAlbums, useAlbums } from './appleMusic'
@@ -16,12 +16,14 @@ import {
   BOOK,
   CASE,
   Cover,
+  Portrait,
   ScreenGlow,
   SLEEVE,
   Swivel,
   TelevisionScreen,
   Turntable,
 } from './Pieces'
+import { Cat } from './Cat'
 import { ScreenLinks } from './ScreenLinks'
 import { lighting, night, palette } from './palette'
 import { toggleTheme, useTheme } from './theme'
@@ -470,13 +472,20 @@ function Films() {
   )
 }
 
+/** Downscaled from the original so the desk costs 56KB rather than 6.4MB. */
+const PORTRAIT = '/images/portrait-desk.jpg'
+
 function Desk() {
   const station = stationById('desk')
   const focused = useFocus() === 'desk'
+  const portrait = useArtworkOne(PORTRAIT)
 
   return (
     <Station station={station}>
       <Prop file="desk" />
+      {/* Left of the monitor, leaning back the way a photograph on a desk
+          does. 33mm clear of the screen and 37mm inside the desk's edge. */}
+      <Portrait photo={portrait} position={[-0.28, TOP.desk, -0.11]} rotation={[-0.15, 0.3, 0]} />
       <Prop file="computerScreen" position={[0, TOP.desk, -0.1]} />
       <ScreenGlow position={[0, TOP.desk + 0.172, -0.085]} />
       <ScreenLinks
@@ -572,6 +581,12 @@ export function Room() {
       <Prop file="rugRound" position={[0.1, 0, 0.36]} scale={1.7} />
       <Lamp />
 
+      {/* Its own boundary: 233KB of cat should not hold back the reveal of the
+          room. It turns up a moment after everything else. */}
+      <Suspense fallback={null}>
+        <Cat />
+      </Suspense>
+
       <Bookcase />
       <RecordPlayer />
       <Desk />
@@ -583,3 +598,4 @@ export function Room() {
 // Covers start downloading as soon as the island hydrates, in parallel with
 // the models, so the shelf is dressed by the time the room appears.
 prefetchAlbums(records)
+prefetchArtwork(PORTRAIT)

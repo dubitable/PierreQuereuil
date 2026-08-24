@@ -28,6 +28,7 @@ export const palette = {
   accent: '#b26a4f',
   vinyl: '#2f2b28',
   label: '#d7a08b',
+  frame: '#6b675f',
 }
 
 /**

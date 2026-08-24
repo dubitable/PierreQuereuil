@@ -4,10 +4,11 @@ import * as THREE from 'three'
 import { palette, spineColor } from './palette'
 import { cover } from './art'
 import { setGrabbing } from './grabbing'
+import { platter } from './turntable'
 import type { Entry } from '../data/collections'
 
 /** Frame-rate independent approach toward a target. */
-const approach = (lambda: number, dt: number) => 1 - Math.exp(-lambda * dt)
+export const approach = (lambda: number, dt: number) => 1 - Math.exp(-lambda * dt)
 
 /**
  * How close counts as arrived. Easing approaches its goal without ever
@@ -17,7 +18,7 @@ const approach = (lambda: number, dt: number) => 1 - Math.exp(-lambda * dt)
 const SETTLED = 0.0005
 
 /** Eases a number toward a goal, returning whether it is still on its way. */
-function ease(current: number, goal: number, k: number) {
+export function ease(current: number, goal: number, k: number) {
   const next = current + (goal - current) * k
   return Math.abs(goal - next) < SETTLED
     ? { value: goal, moving: false }
@@ -177,6 +178,57 @@ export function Cover({
 }
 
 /**
+ * A photograph in a frame, standing on a desk. Built the same way as a cover —
+ * one box, one material, and the picture on its own plane a hair in front —
+ * except that the box is a shade bigger than the picture on every side, which
+ * is what makes it read as a frame with a rebate rather than a floating photo.
+ *
+ * The group's origin is the bottom of the frame, so it can be dropped straight
+ * onto a surface and leaned back from there.
+ */
+const FRAME: Size = [0.1, 0.136, 0.009]
+const PHOTO: [number, number] = [0.078, 0.112]
+
+export function Portrait({
+  photo,
+  position,
+  rotation,
+}: {
+  photo: THREE.Texture | null
+  position: [number, number, number]
+  rotation: [number, number, number]
+}) {
+  const front = useRef<THREE.MeshStandardMaterial>(null)
+
+  // Same recompile every other late-arriving image needs, plus the centre-crop
+  // that keeps a portrait from being squashed into the opening.
+  useLayoutEffect(() => {
+    cover(photo, PHOTO[0] / PHOTO[1])
+    if (front.current) front.current.needsUpdate = true
+  }, [photo])
+
+  return (
+    <group position={position} rotation={rotation}>
+      <mesh position={[0, FRAME[1] / 2, 0]} castShadow receiveShadow>
+        <boxGeometry args={FRAME} />
+        <meshStandardMaterial color={palette.frame} roughness={0.85} metalness={0} />
+      </mesh>
+
+      <mesh position={[0, FRAME[1] / 2, FRAME[2] / 2 + 0.0004]}>
+        <planeGeometry args={PHOTO} />
+        <meshStandardMaterial
+          ref={front}
+          color={photo ? '#ffffff' : palette.inkSoft}
+          map={photo}
+          roughness={0.9}
+          metalness={0}
+        />
+      </mesh>
+    </group>
+  )
+}
+
+/**
  * The vintage television's picture, measured off the GLB rather than guessed:
  * the recessed screen sits at model z -0.020 spanning x[0.035..0.267] and
  * y[0.034..0.236]. `Prop` recentres the model by x -0.205 and z +0.135, which
@@ -315,6 +367,8 @@ export function Turntable({
       // Spins up only once it has settled, and coasts down as it lifts away.
       if (c > 0.75) spin.current += dt * 3.6 * ((c - 0.75) / 0.25)
       disc.current.rotation.y = spin.current
+      // Published for the cat, which may be sitting on the record.
+      platter.spin = spin.current
     }
 
     if (arm.current) {

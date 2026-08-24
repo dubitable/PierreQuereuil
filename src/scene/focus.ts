@@ -82,7 +82,10 @@ export const STATIONS: Station[] = [
     label: 'Records',
     position: [-0.75, 0, 0.62],
     rotation: 0.22,
-    frame: { look: [-0.2, 0.24, 0], fit: { width: 0.9, height: 0.66 }, elevation: 0.172 },
+    // Aimed 0.06 higher than the turntable alone needs, so a cat sitting on
+    // the platter keeps its head inside the frame on a 16:9 screen. Nothing
+    // else moves out of shot: the bottom edge still falls below the floor.
+    frame: { look: [-0.2, 0.3, 0], fit: { width: 0.9, height: 0.66 }, elevation: 0.172 },
   },
   {
     id: 'desk',

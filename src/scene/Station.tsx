@@ -2,6 +2,7 @@ import { Suspense, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { setFocus, toggleFocus, useFocus, type Station as StationConfig } from './focus'
+import { clearHoveredStation, setHoveredStation } from './hovered'
 import { useIsTouch } from './useIsTouch'
 
 /**
@@ -45,11 +46,16 @@ export function Station({
 
   useEffect(() => {
     setHovered(false)
+    clearHoveredStation(station.id)
     document.body.style.cursor = 'auto'
-  }, [focus])
+  }, [focus, station.id])
 
   const setCursor = (value: boolean) => {
     setHovered(value)
+    // Published so the cat, which stands in world space rather than inside
+    // this group, can ride the same lift instead of sinking into the furniture.
+    if (value) setHoveredStation(station.id)
+    else clearHoveredStation(station.id)
     document.body.style.cursor = value && interactive ? 'pointer' : 'auto'
   }
 
