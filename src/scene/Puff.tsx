@@ -28,16 +28,10 @@ const dummy = new THREE.Object3D()
  */
 export function Puff({
   position,
-  scale = 1,
   onDone,
 }: {
-  /** Where it blooms from, in whatever space it is mounted in. */
+  /** Where it blooms from, in world space. */
   position: THREE.Vector3
-  /**
-   * Everything about the cloud, in proportion. The defaults are cut for a cat;
-   * a trophy is a third the size and wants a third the smoke.
-   */
-  scale?: number
   onDone: () => void
 }) {
   const mesh = useRef<THREE.InstancedMesh>(null)
@@ -75,16 +69,15 @@ export function Puff({
     // Grows as it spreads and collapses at the end, so it thins out rather
     // than simply becoming a transparent cloud of the same size.
     const swell = (0.35 + 0.9 * travel) * (1 - t * t)
-    const spread = SPREAD * scale
     for (let i = 0; i < BLOBS; i += 1) {
       const blob = blobs[i]!
       dummy.position
         .copy(blob.direction)
-        .multiplyScalar(spread * travel)
-        .setY(blob.direction.y * spread * travel + RISE * scale * travel)
+        .multiplyScalar(SPREAD * travel)
+        .setY(blob.direction.y * SPREAD * travel + RISE * travel)
       dummy.rotation.set(blob.tilt.x, blob.tilt.y + travel * 0.7, blob.tilt.z)
       // Never exactly zero: a zero-scale instance is a degenerate matrix.
-      dummy.scale.setScalar(Math.max(BLOB * scale * blob.size * swell, 1e-4))
+      dummy.scale.setScalar(Math.max(BLOB * blob.size * swell, 1e-4))
       dummy.updateMatrix()
       node.setMatrixAt(i, dummy.matrix)
     }
@@ -94,7 +87,7 @@ export function Puff({
 
   // Instance matrices start as the identity, which would put seven unit-radius
   // blobs at the origin for one frame.
-  useLayoutEffect(() => layout(0), [scale])
+  useLayoutEffect(() => layout(0), [])
 
   useFrame((state, delta) => {
     if (spent.current) return

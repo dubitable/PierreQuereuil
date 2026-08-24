@@ -31,14 +31,6 @@ export const palette = {
   frame: '#6b675f',
   /** The cat's puff of smoke. Warm and pale, one step off the background. */
   smoke: '#e6e0d2',
-  /**
-   * An earned trophy. Deliberately not a metal: a `metalness: 1` material takes
-   * almost all of its colour from the environment, and this room has no
-   * environment map on purpose, so a real metal renders nearly black here.
-   * This is a warm colour with a little emissive behind it instead, the same
-   * trick the lampshade uses.
-   */
-  gold: '#d8a13e',
 }
 
 /**

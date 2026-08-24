@@ -9,7 +9,6 @@ import { platter } from './turntable'
 import { approach, ease } from './Pieces'
 import { Puff } from './Puff'
 import { Zzz } from './Zzz'
-import { mark } from './trophies'
 import { TOP } from './useProp'
 
 const FILE = '/models/cat.glb'
@@ -460,11 +459,6 @@ export function Cat() {
     const clip = clips.actions.get('Headbutt')?.getClip().duration ?? 0.625
     later(clip * 1000, leave)
   }
-
-  // Which covers the random spot it starts in as well as every later move.
-  useEffect(() => {
-    mark('cat', index)
-  }, [index])
 
   // Is it in the frame anyone is looking at? Off-frame it does nothing at all.
   const watched = focus === null ? !touch : focus === home.station

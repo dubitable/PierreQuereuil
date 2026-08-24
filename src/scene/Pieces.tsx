@@ -467,7 +467,6 @@ const SPIN_STOP = 0.05
 export function Swivel({
   children,
   capture,
-  onSpin,
   ...props
 }: {
   children: ReactNode
@@ -478,11 +477,6 @@ export function Swivel({
    * swallows it, whatever this says.
    */
   capture?: boolean
-  /**
-   * Radians turned since the last report, whether by hand or by coasting.
-   * Called every frame of a spin, so whatever listens has to be cheap.
-   */
-  onSpin?: (radians: number) => void
 } & ThreeElements['group']) {
   const spin = useRef<THREE.Group>(null)
   // A drag writes straight to the group, outside any frame loop, so it has to
@@ -500,9 +494,7 @@ export function Swivel({
     const node = spin.current
     if (!node || velocity.current === 0) return
     const dt = Math.min(delta, 1 / 30)
-    const turned = velocity.current * dt
-    node.rotation.y += turned
-    onSpin?.(turned)
+    node.rotation.y += velocity.current * dt
     velocity.current *= Math.exp(-SPIN_DRAG * dt)
     if (Math.abs(velocity.current) < SPIN_STOP) velocity.current = 0
     // Coasting down; the drag itself invalidates through its own handler.
@@ -539,7 +531,6 @@ export function Swivel({
       last = { x: native.clientX, time: now }
       moved.current += Math.abs(dx)
       node.rotation.y += dx * DRAG_TURN
-      onSpin?.(dx * DRAG_TURN)
       invalidate()
       const instant = (dx * DRAG_TURN) / dt
       // Smoothed, so one stuttered frame at the end does not decide the flick.

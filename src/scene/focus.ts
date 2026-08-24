@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react'
 import * as THREE from 'three'
 
-export type StationId = 'books' | 'trophies' | 'records' | 'films' | 'desk'
+export type StationId = 'books' | 'records' | 'films' | 'desk'
 
 let current: StationId | null = null
 const listeners = new Set<() => void>()
@@ -76,20 +76,6 @@ export const STATIONS: Station[] = [
     position: [-1.5, 0, -0.18],
     rotation: 0.4,
     frame: { look: [0, 0.5, 0], fit: { width: 0.55, height: 1.05 }, elevation: 0.063 },
-  },
-  {
-    id: 'trophies',
-    label: 'Trophies',
-    // The gap between the bookcase and the desk, set back against the rear of
-    // the room. Chosen by projecting the case's eight corners through every
-    // camera in the room at 9:19, 3:4 and 16:9: it clears the bookcase by
-    // 210mm, stands in front of nothing, and keeps 0.40 of margin inside the
-    // wide shot at every parallax yaw — which is what makes it clickable
-    // without arrowing to it. The near corner of the room, which reads better,
-    // falls off the bottom of the wide shot the way a floor-standing cat did.
-    position: [-0.9, 0, -0.8],
-    rotation: 0.2,
-    frame: { look: [0, 0.46, 0], fit: { width: 0.5, height: 0.42 }, elevation: 0.1 },
   },
   {
     id: 'records',
