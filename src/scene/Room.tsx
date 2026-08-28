@@ -484,8 +484,14 @@ function Desk() {
     <Station station={station}>
       <Prop file="desk" />
       {/* Left of the monitor, leaning back the way a photograph on a desk
-          does. 33mm clear of the screen and 37mm inside the desk's edge. */}
-      <Portrait photo={portrait} position={[-0.28, TOP.desk, -0.11]} rotation={[-0.15, 0.3, 0]} />
+          does. 33mm clear of the screen and 37mm inside the desk's edge, which
+          also leaves it room to go over onto its face when clicked. */}
+      <Portrait
+        photo={portrait}
+        position={[-0.28, TOP.desk, -0.11]}
+        rotation={[-0.15, 0.3, 0]}
+        interactive={focused}
+      />
       <Prop file="computerScreen" position={[0, TOP.desk, -0.1]} />
       <ScreenGlow position={[0, TOP.desk + 0.172, -0.085]} />
       <ScreenLinks
@@ -497,7 +503,7 @@ function Desk() {
       <Prop file="computerMouse" position={[0.21, TOP.desk, 0.075]} rotation={[0, -0.15, 0]} />
       {/* The model's own swivel column lands within 3mm of where `Prop`
           centres it, so the group's Y axis is already the right pivot. */}
-      <Swivel position={[0.4, 0, 0.55]} rotation={[0, Math.PI * 0.82, 0]} capture={focused}>
+      <Swivel position={[0.4, 0, 0.55]} rotation={[0, Math.PI * 0.82, 0]}>
         <Prop
           file="chairDesk"
           scale={0.95}

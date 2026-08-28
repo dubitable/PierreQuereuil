@@ -189,16 +189,70 @@ export function Cover({
 const FRAME: Size = [0.1, 0.136, 0.009]
 const PHOTO: [number, number] = [0.078, 0.112]
 
+/**
+ * Where the frame turns when it goes over: the bottom front edge, at desk
+ * level. Pivoting about the centre of its base instead would swing the back
+ * half down through the desk and leave the fallen frame resting half a
+ * thickness above the surface; about the front edge it lands flat on its face,
+ * which is what knocking one over actually does. The lean sits *inside* the
+ * joint, so the fall is about the frame's own left-right axis and it lands
+ * square rather than a few degrees onto one corner.
+ */
+const PIVOT = FRAME[2] / 2
+
+/** Face down on the desk, measured from upright. */
+const FLAT = Math.PI / 2
+
+/**
+ * Angular acceleration at full tilt, in rad/s². A body pivoting about its base
+ * accelerates at 3g·sinθ/2L, and for a 136mm frame under real gravity that is
+ * over in a fifth of a second — a dozen frames, which reads as a pop rather
+ * than a fall. At a third of g it keeps the shape of the real thing, arriving
+ * at its fastest, and takes about a quarter second.
+ */
+const GRAVITY = 3.2
+const TOPPLE = (3 * GRAVITY) / (2 * FRAME[1])
+
+/**
+ * The shove a click gives it, in rad/s. The frame leans back, so gravity about
+ * the front edge is what holds it up: it has to be pushed over its own balance
+ * point, which takes 0.89, before the fall takes over. Well past that, because
+ * only just over it spends a third of a second creeping through upright, where
+ * there is almost no torque — a hesitation, not a knock. At this it is past
+ * vertical in 75ms and flat in under half a second.
+ */
+const KNOCK = 2.2
+
+/** How much of its speed the frame keeps when it hits the desk. */
+const BOUNCE = 0.35
+/** A landing slower than this is the last one; the rebound would be degrees. */
+const REST = 1
+
 export function Portrait({
   photo,
   position,
   rotation,
+  interactive,
 }: {
   photo: THREE.Texture | null
   position: [number, number, number]
   rotation: [number, number, number]
+  /**
+   * Whether a click knocks it over. Only the focused desk hands one down:
+   * anywhere else the click belongs to the station behind it, which is what
+   * brings the camera in.
+   */
+  interactive: boolean
 }) {
   const front = useRef<THREE.MeshStandardMaterial>(null)
+  const joint = useRef<THREE.Group>(null)
+  const invalidate = useThree((state) => state.invalidate)
+  const lean = rotation[0]
+  /** Tilt from upright: the lean while it stands, FLAT once it is down. */
+  const angle = useRef(lean)
+  /** Non-zero only while it is going over, in rad/s. */
+  const spin = useRef(0)
+  const down = useRef(false)
 
   // Same recompile every other late-arriving image needs, plus the centre-crop
   // that keeps a portrait from being squashed into the opening.
@@ -207,23 +261,87 @@ export function Portrait({
     if (front.current) front.current.needsUpdate = true
   }, [photo])
 
-  return (
-    <group position={position} rotation={rotation}>
-      <mesh position={[0, FRAME[1] / 2, 0]} castShadow receiveShadow>
-        <boxGeometry args={FRAME} />
-        <meshStandardMaterial color={palette.frame} roughness={0.85} metalness={0} />
-      </mesh>
+  useFrame((state, delta) => {
+    const node = joint.current
+    if (!node) return
+    const dt = Math.min(delta, 1 / 30)
+    let moving = false
 
-      <mesh position={[0, FRAME[1] / 2, FRAME[2] / 2 + 0.0004]}>
-        <planeGeometry args={PHOTO} />
-        <meshStandardMaterial
-          ref={front}
-          color={photo ? '#ffffff' : palette.inkSoft}
-          map={photo}
-          roughness={0.9}
-          metalness={0}
-        />
-      </mesh>
+    if (down.current) {
+      // Integrated rather than eased, because the two arrive differently: an
+      // approach lands slowing down, which looks like the frame being laid on
+      // its face. A fall has to land at its fastest.
+      if (spin.current !== 0) {
+        spin.current += TOPPLE * Math.sin(angle.current) * dt
+        angle.current += spin.current * dt
+        if (angle.current >= FLAT) {
+          angle.current = FLAT
+          // The slap: it keeps a third of its speed, rocks back a couple of
+          // degrees and drops again. A second rebound is a tenth of that, so
+          // the first landing slow enough not to show is the last one.
+          spin.current = Math.abs(spin.current) < REST ? 0 : -Math.abs(spin.current) * BOUNCE
+        }
+        moving = spin.current !== 0
+      }
+    } else {
+      // Standing it back up is a hand, not a fall, so this half is eased.
+      spin.current = 0
+      const turn = ease(angle.current, lean, approach(6, dt))
+      angle.current = turn.value
+      moving = turn.moving
+    }
+
+    node.rotation.x = angle.current - lean
+    if (moving) state.invalidate()
+  })
+
+  const hover = (value: boolean) => {
+    if (interactive) document.body.style.cursor = value ? 'pointer' : 'auto'
+  }
+
+  return (
+    <group position={position} rotation={[0, rotation[1], rotation[2]]}>
+      <group ref={joint} position={[0, 0, PIVOT]}>
+        <group
+          position={[0, 0, -PIVOT]}
+          rotation={[lean, 0, 0]}
+          onPointerOver={(event) => {
+            if (!interactive) return
+            event.stopPropagation()
+            hover(true)
+          }}
+          onPointerOut={() => hover(false)}
+          onClick={(event) => {
+            if (!interactive) return
+            // The desk's own handler would take this click as a second one on
+            // the station and hand the camera back to the room.
+            event.stopPropagation()
+            if (down.current) {
+              down.current = false
+            } else {
+              down.current = true
+              spin.current = KNOCK
+            }
+            invalidate()
+          }}
+        >
+          <mesh position={[0, FRAME[1] / 2, 0]} castShadow receiveShadow>
+            <boxGeometry args={FRAME} />
+            <meshStandardMaterial color={palette.frame} roughness={0.85} metalness={0} />
+          </mesh>
+
+          <mesh position={[0, FRAME[1] / 2, FRAME[2] / 2 + 0.0004]}>
+            <planeGeometry args={PHOTO} />
+            <meshStandardMaterial
+              ref={front}
+              color={photo ? '#ffffff' : palette.inkSoft}
+              map={photo}
+              roughness={0.9}
+              metalness={0}
+            />
+          </mesh>
+        </group>
+      </group>
     </group>
   )
 }
@@ -449,8 +567,6 @@ const DRAG_TURN = 0.011
 const FLICK_MAX = 13
 /** A release this long after the last movement is a set-down, not a flick. */
 const FLICK_STALE = 90
-/** Pixels of travel before a press counts as a drag rather than a click. */
-const DRAG_SLOP = 3
 /** Coasts down over a few seconds, the way a real castor chair does. */
 const SPIN_DRAG = 0.85
 const SPIN_STOP = 0.05
@@ -466,24 +582,15 @@ const SPIN_STOP = 0.05
  */
 export function Swivel({
   children,
-  capture,
   ...props
 }: {
   children: ReactNode
-  /**
-   * Swallow a click rather than letting the station behind it act. Set once
-   * the station is focused, where its own handler would toggle focus back off
-   * — unfocused, a click should still bring the camera in. A drag always
-   * swallows it, whatever this says.
-   */
-  capture?: boolean
 } & ThreeElements['group']) {
   const spin = useRef<THREE.Group>(null)
   // A drag writes straight to the group, outside any frame loop, so it has to
   // ask for the redraw itself.
   const invalidate = useThree((state) => state.invalidate)
   const velocity = useRef(0)
-  const moved = useRef(0)
   const flick = useRef<{ speed: number; time: number } | null>(null)
   const release = useRef<(() => void) | null>(null)
 
@@ -509,7 +616,6 @@ export function Swivel({
     // the chair would follow the cursor for good.
     if (!node || release.current) return
     velocity.current = 0
-    moved.current = 0
     flick.current = null
     setGrabbing(true)
     document.body.style.cursor = 'grabbing'
@@ -529,7 +635,6 @@ export function Swivel({
       const dx = native.clientX - last.x
       const dt = Math.max(now - last.time, 1) / 1000
       last = { x: native.clientX, time: now }
-      moved.current += Math.abs(dx)
       node.rotation.y += dx * DRAG_TURN
       invalidate()
       const instant = (dx * DRAG_TURN) / dt
@@ -579,8 +684,10 @@ export function Swivel({
         }}
         onPointerDown={grab}
         onClick={(event) => {
-          // A drag is never also a click on the station behind it.
-          if (capture || moved.current > DRAG_SLOP) event.stopPropagation()
+          // Every click, not only the ones that turned out to be drags: the
+          // chair is a handle rather than a way into the station behind it, so
+          // pushing it around should never be what moves the camera.
+          event.stopPropagation()
         }}
       >
         {children}
